@@ -92,7 +92,7 @@ setInterval(async () => {
         recordError(`Recurring Processing Failure: ${err.message}`);
         await sendAdminAlert('🚨 Recurring Processing Failed', `Error: ${err.message}\n\n${err.stack}`);
     }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000);  // Correct: every 5 minutes
 
 setInterval(async () => {
     try {
@@ -103,7 +103,7 @@ setInterval(async () => {
         recordError(`Recurring Cleanup Failure: ${err.message}`);
         await sendAdminAlert('🚨 Recurring Cleanup Failed', `Error: ${err.message}\n\n${err.stack}`);
     }
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000);  // Correct: every 60 minutes
 
 // 🌅 Daily Reset for Error Notifications (at Midnight)
 function scheduleDailyReset() {
