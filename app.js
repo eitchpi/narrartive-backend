@@ -14,12 +14,14 @@ dotenv.config();
 // Setup Express app
 const app = express();
 
-// ✅ Health Check (for Render)
-app.get('/health', async (req, res) => {
+// Global tracker cache — refreshed every 5 minutes by your existing logic
+let trackerCache = {};  
+
+// ✅ Health Check (for Render) — Now uses trackerCache (no spam)
+app.get('/health', (req, res) => {
     try {
-        const tracker = await loadTracker();
-        const fileCount = Object.keys(tracker).length;
-        const latestFile = fileCount > 0 ? Object.keys(tracker).sort().pop() : 'None';
+        const fileCount = Object.keys(trackerCache).length;
+        const latestFile = fileCount > 0 ? Object.keys(trackerCache).sort().pop() : 'None';
 
         res.json({
             status: 'ok',
@@ -30,6 +32,14 @@ app.get('/health', async (req, res) => {
         res.status(500).json({ status: 'error', message: err.message });
     }
 });
+
+// Example of how trackerCache should be refreshed (this already exists in your app.js):
+setInterval(async () => {
+    trackerCache = await loadTracker();  // refresh the cache every 5 minutes
+    await processAllOrders(trackerCache);
+    await migrateOldOrders();
+    console.log('✅ Recurring order processing and migration complete.');
+}, 5 * 60 * 1000);
 
 // ✅ Status Check (for Admin Monitoring)
 app.get('/status', getStatus);
@@ -66,8 +76,6 @@ async function cleanupOldCompletedOrders() {
     }
 }
 
-// 🗂️ Global tracker cache (loaded once per interval)
-let trackerCache = {};
 
 // ⏱️ Recurring Tracker Load (every 5 minutes)
 async function refreshTracker() {
