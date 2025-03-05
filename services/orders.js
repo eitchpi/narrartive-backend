@@ -98,18 +98,22 @@ async function processAllOrders() {
 
     for (const [orderNumber, orderItems] of Object.entries(groupedOrders)) {
         if (tracker[fileName].includes(orderNumber)) continue;
-
+    
         try {
             await processSingleOrder(orderNumber, orderItems);
             tracker[fileName].push(orderNumber);
             await saveTracker(tracker);
         } catch (err) {
             console.error(`❌ Failed to process order ${orderNumber}:`, err);
-            await sendAdminAlert(`🚨 Order Processing Failed: ${orderNumber}`, `Error: ${err.message}\nStack: ${err.stack}`);
-            await sendErrorNotification(order.id, err.message);
+    
+            // Internal admin alert (Slack/Email if you want both)
+            await sendAdminAlert(`🚨 Order Processing Failed: ${orderNumber}`, `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`);
+    
+            // Brevo notification to your inbox
+            await sendErrorNotification(orderNumber, `File: ${fileName}\n${err.message}`);
         }
     }
-
+    
     if (tracker[fileName].length === Object.keys(groupedOrders).length) {
         await moveFileToProcessed(fileId);
     }
