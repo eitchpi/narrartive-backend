@@ -1,12 +1,14 @@
 import transporter from './emailClient.js';
 
 export async function sendErrorNotification(orderNumber, message) {
-    const recipient = process.env.NOTIFY_EMAIL_RECIPIENT;  // This comes directly from Render environment variables
+    const recipient = process.env.NOTIFY_EMAIL_RECIPIENT;
 
     if (!recipient) {
         console.error('❌ Notification failed: NO NOTIFY_EMAIL_RECIPIENT configured.');
-        return;  // Fail silently if no recipient (but log so we know)
+        return;
     }
+
+    console.log(`📧 Debug: Sending error notification for Order ${orderNumber} to ${recipient}`);
 
     const subject = `⚠️ Order Processing Failed: Order ${orderNumber}`;
 
@@ -19,13 +21,13 @@ export async function sendErrorNotification(orderNumber, message) {
 
     try {
         await transporter.sendMail({
-            from: 'noreply@narrartive.de',  // Use your existing sender email here
-            to: recipient,
+            from: 'noreply@narrartive.de',
+            to: recipient,  // <- Log confirms this
             subject,
             html
         });
 
-        console.log(`📧 Error notification sent for Order ${orderNumber}`);
+        console.log(`✅ Email successfully sent to ${recipient}`);
     } catch (err) {
         console.error(`❌ Failed to send error notification for Order ${orderNumber}:`, err.message);
     }
