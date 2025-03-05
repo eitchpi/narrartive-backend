@@ -1,26 +1,12 @@
-import { loadTracker } from '../services/tracker.js';
-
-let lastError = null;
-
-export function recordError(errorMessage) {
-    lastError = errorMessage;
-}
+import { trackerCache } from '../app.js';
 
 export async function getStatus(req, res) {
-    try {
-        const tracker = await loadTracker();
-        const files = Object.keys(tracker);
-        const lastFile = files[files.length - 1] || 'None';
+    const fileCount = Object.keys(trackerCache).length;
+    const latestFile = fileCount > 0 ? Object.keys(trackerCache).sort().pop() : 'None';
 
-        const totalOrdersProcessed = Object.values(tracker).reduce((sum, orders) => sum + orders.length, 0);
-
-        res.json({
-            status: 'ok',
-            lastProcessedFile: lastFile,
-            totalOrdersProcessed,
-            lastError
-        });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
+    res.json({
+        status: 'ok',
+        trackedFiles: fileCount,
+        lastOrderProcessed: latestFile
+    });
 }
