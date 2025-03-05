@@ -3,7 +3,7 @@ import path from 'path';
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import csvParser from 'csv-parser';
-import { loadTracker, saveTracker } from './tracker.js';
+import { saveTracker } from './tracker.js';
 import { createZip, uploadFile, sendEmail, deleteLocalFiles } from './fileHandler.js';
 import { generatePassword, sendAdminAlert } from './utils.js';
 import { sendErrorNotification } from './notifier.js';
@@ -82,13 +82,15 @@ async function loadProductList() {
     return productList;
 }
 
-async function processAllOrders() {
+async function processAllOrders(tracker) {
     const latestOrderFile = await loadLatestEtsyOrder();
-    if (!latestOrderFile) return;
+    if (!latestOrderFile) {
+        console.log('📭 No new Etsy orders found.');
+        return;
+    }
 
     const { fileId, fileName, orders } = latestOrderFile;
-    const tracker = await loadTracker();
-    tracker[fileName] ??= [];
+    tracker[fileName] ??= [];  // Initialize tracking entry if missing
 
     const groupedOrders = orders.reduce((map, order) => {
         map[order['Order Number']] ??= [];
@@ -97,7 +99,9 @@ async function processAllOrders() {
     }, {});
 
     for (const [orderNumber, orderItems] of Object.entries(groupedOrders)) {
-        if (tracker[fileName].includes(orderNumber)) continue;
+        if (tracker[fileName].includes(orderNumber)) {
+            continue;  // Skip already processed orders
+        }
 
         try {
             await processSingleOrder(orderNumber, orderItems);
@@ -108,11 +112,19 @@ async function processAllOrders() {
 
             recordError(`Failed to process order ${orderNumber}: ${err.message}`);
 
-            await sendAdminAlert(`🚨 Order Processing Failed: ${orderNumber}`, `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`);
-            await sendErrorNotification(orderNumber, `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`);
+            await sendAdminAlert(
+                `🚨 Order Processing Failed: ${orderNumber}`,
+                `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`
+            );
+
+            await sendErrorNotification(
+                orderNumber,
+                `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`
+            );
         }
     }
 
+    // If every order in this file is processed, move it to "Processed Orders"
     if (tracker[fileName].length === Object.keys(groupedOrders).length) {
         await moveFileToProcessed(fileId);
     }

@@ -14,10 +14,10 @@ dotenv.config();
 // Setup Express app
 const app = express();
 
-// ✅ Health Check (used by Render for service health)
+// ✅ Health Check (for Render)
 app.get('/health', async (req, res) => {
     try {
-        const tracker = await loadTracker();  // This is totally fine.
+        const tracker = await loadTracker();
         const fileCount = Object.keys(tracker).length;
         const latestFile = fileCount > 0 ? Object.keys(tracker).sort().pop() : 'None';
 
@@ -31,10 +31,10 @@ app.get('/health', async (req, res) => {
     }
 });
 
-// ✅ Status Check (manual admin monitoring)
+// ✅ Status Check (for Admin Monitoring)
 app.get('/status', getStatus);
 
-// Setup Google Drive Auth (this is safe to leave here)
+// Setup Google Drive Auth
 const credentials = {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,
     private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -48,17 +48,15 @@ const auth = new google.auth.JWT({
 });
 const drive = google.drive({ version: 'v3', auth });
 
-// 🧹 Cleanup old completed orders (older than 24h)
+// 🧹 Cleanup old completed files (older than 24h)
 async function cleanupOldCompletedOrders() {
     const folderId = process.env.COMPLETED_ORDERS_FOLDER_ID;
-
     const res = await drive.files.list({
         q: `'${folderId}' in parents`,
         fields: 'files(id, createdTime)'
     });
 
-    const threshold = Date.now() - 24 * 60 * 60 * 1000; // 24 hours
-
+    const threshold = Date.now() - 24 * 60 * 60 * 1000;
     for (const file of res.data.files) {
         const createdTime = new Date(file.createdTime).getTime();
         if (createdTime < threshold) {
@@ -68,11 +66,21 @@ async function cleanupOldCompletedOrders() {
     }
 }
 
-// 🚀 Initial Processing & Cleanup at Startup (Runs once)
+// 🗂️ Global tracker cache (loaded once per interval)
+let trackerCache = {};
+
+// ⏱️ Recurring Tracker Load (every 5 minutes)
+async function refreshTracker() {
+    trackerCache = await loadTracker();
+    console.log('♻️ Tracker refreshed from Google Drive.');
+}
+
+// 🚀 Initial Processing & Cleanup at Startup
 async function startup() {
     console.log('🚀 Running initial processing & cleanup at startup...');
     try {
-        await processAllOrders();  // loadTracker() happens inside processAllOrders()
+        await refreshTracker(); // Load tracker once at startup
+        await processAllOrders(trackerCache);
         await migrateOldOrders();
         await cleanupOldCompletedOrders();
         console.log('✅ Initial processing, migration & cleanup complete.');
@@ -85,7 +93,8 @@ async function startup() {
 // ⏱️ Recurring Order Processing (Every 5 minutes)
 setInterval(async () => {
     try {
-        await processAllOrders();  // loadTracker() happens inside processAllOrders()
+        await refreshTracker();
+        await processAllOrders(trackerCache);
         await migrateOldOrders();
         console.log('✅ Recurring order processing and migration complete.');
     } catch (err) {
@@ -105,7 +114,7 @@ setInterval(async () => {
     }
 }, 60 * 60 * 1000);
 
-// 🌅 Schedule Daily Reset for Error Notifications (At midnight)
+// 🌅 Daily Reset for Error Notifications (At midnight)
 function scheduleDailyReset() {
     const now = new Date();
     const nextMidnight = new Date(now);
