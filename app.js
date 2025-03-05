@@ -42,7 +42,7 @@ setInterval(async () => {
 }, 5 * 60 * 1000);
 
 // ✅ Status Check (for Admin Monitoring)
-app.get('/status', getStatus);
+app.get('/status', (req, res) => getStatus(req, res, trackerCache));
 
 // Setup Google Drive Auth
 const credentials = {
