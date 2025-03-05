@@ -22,6 +22,7 @@ const drive = google.drive({ version: 'v3', auth });
 const TRACKER_FILE_NAME = 'processed_tracker.json';
 
 async function loadTracker() {
+    console.trace('📊 loadTracker() called');  // Add this line
     const trackerFileId = await findTrackerFileId();
     if (!trackerFileId) {
         console.log('📭 No tracker found in Google Drive — starting fresh.');
