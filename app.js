@@ -5,7 +5,8 @@ import { sendAdminAlert } from './services/utils.js';
 import { processAllOrders } from './services/orders.js';
 import { migrateOldOrders } from './services/migrateOldOrders.js';
 import { loadTracker } from './services/tracker.js';
-import { getStatus, recordError, resetDailyFailures } from './routes/status.js';
+import { getStatus, recordError } from './routes/status.js';
+import { resetDailyFailures } from './services/notifier.js';
 
 // Load environment variables
 dotenv.config();
