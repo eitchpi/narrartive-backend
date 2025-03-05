@@ -4,6 +4,12 @@ import { processAllOrders } from './services/orders.js';
 import { migrateOldOrders } from './services/migrateOldOrders.js';
 import { google } from 'googleapis';
 import healthCheckApp from './services/healthCheck.js';
+import express from 'express';
+import { getStatus } from './routes/status.js';
+
+const app = express();
+
+app.get('/status', getStatus);
 
 dotenv.config();
 

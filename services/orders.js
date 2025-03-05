@@ -7,7 +7,7 @@ import { loadTracker, saveTracker } from './tracker.js';
 import { createZip, uploadFile, sendEmail, deleteLocalFiles } from './fileHandler.js';
 import { generatePassword, sendAdminAlert } from './utils.js';
 import { sendErrorNotification } from './notifier.js';
-
+import { recordError } from '../routes/status.js';
 
 dotenv.config();
 
@@ -105,6 +105,8 @@ async function processAllOrders() {
             await saveTracker(tracker);
         } catch (err) {
             console.error(`❌ Failed to process order ${orderNumber}:`, err);
+
+            recordError(`Failed to process order ${orderNumber}: ${err.message}`);
 
             await sendAdminAlert(`🚨 Order Processing Failed: ${orderNumber}`, `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`);
             await sendErrorNotification(orderNumber, `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`);
