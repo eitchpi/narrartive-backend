@@ -80,7 +80,7 @@ async function cleanupOldCompletedOrders() {
 // ⏱️ Recurring Tracker Load (every 5 minutes)
 async function refreshTracker() {
     trackerCache = await loadTracker();
-    console.log('♻️ Tracker refreshed from Google Drive.');
+    console.log(`♻️ Tracker refreshed from Google Drive at ${new Date().toISOString()}`);
 }
 
 // 🚀 Initial Processing & Cleanup at Startup
