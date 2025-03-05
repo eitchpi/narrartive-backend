@@ -6,6 +6,7 @@ import { google } from 'googleapis';
 import healthCheckApp from './services/healthCheck.js';
 import express from 'express';
 import { getStatus } from './routes/status.js';
+import { resetDailyFailures } from './services/notifier.js';
 
 const app = express();
 
@@ -16,6 +17,23 @@ dotenv.config();
 healthCheckApp.listen(3000, () => {
     console.log('✅ Health Check Endpoint Running on Port 3000');
 });
+
+function scheduleDailyReset() {
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setDate(now.getDate() + 1);
+    nextMidnight.setHours(0, 0, 0, 0);
+
+    const msUntilMidnight = nextMidnight - now;
+
+    setTimeout(() => {
+        resetDailyFailures();
+        scheduleDailyReset();  // Schedule the next day
+    }, msUntilMidnight);
+
+    console.log('🕛 Scheduled daily error notification reset.');
+}
+scheduleDailyReset();
 
 const credentials = {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,

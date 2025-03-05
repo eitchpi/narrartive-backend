@@ -1,5 +1,17 @@
 import transporter from './emailClient.js';
 
+const failedOrdersToday = new Set();   // New tracker
+
+function isSameDay(timestamp) {
+    const now = new Date();
+    const date = new Date(timestamp);
+    return now.toDateString() === date.toDateString();
+}
+
+export function resetDailyFailures() {
+    failedOrdersToday.clear();  // Clear at midnight to allow fresh alerts
+}
+
 export async function sendErrorNotification(orderNumber, message) {
     const recipient = process.env.NOTIFY_EMAIL_RECIPIENT;
 
@@ -8,7 +20,14 @@ export async function sendErrorNotification(orderNumber, message) {
         return;
     }
 
-    console.log(`📧 Debug: Sending error notification for Order ${orderNumber} to ${recipient}`);
+    const cacheKey = `${orderNumber}-${new Date().toISOString().split('T')[0]}`;
+    
+    if (failedOrdersToday.has(cacheKey)) {
+        console.log(`⏸️ Skipping duplicate error notification for Order ${orderNumber} (already notified today)`);
+        return;
+    }
+
+    failedOrdersToday.add(cacheKey);
 
     const subject = `⚠️ Order Processing Failed: Order ${orderNumber}`;
 
@@ -22,12 +41,12 @@ export async function sendErrorNotification(orderNumber, message) {
     try {
         await transporter.sendMail({
             from: 'noreply@narrartive.de',
-            to: recipient,  // <- Log confirms this
+            to: recipient,
             subject,
             html
         });
 
-        console.log(`✅ Email successfully sent to ${recipient}`);
+        console.log(`📧 Error notification sent for Order ${orderNumber}`);
     } catch (err) {
         console.error(`❌ Failed to send error notification for Order ${orderNumber}:`, err.message);
     }
