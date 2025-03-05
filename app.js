@@ -68,7 +68,7 @@ async function startup() {
     console.log('🚀 Running initial processing & cleanup at startup...');
     await refreshTracker();
     await processAllOrders(trackerCache);
-    await migrateOldOrders();
+    await migrateOldOrders(trackerCache);  // Pass the cached tracker
     await cleanupOldCompletedOrders();
     console.log('✅ Initial processing complete.');
 }
@@ -77,7 +77,7 @@ async function startup() {
 setInterval(async () => {
     await refreshTracker();
     await processAllOrders(trackerCache);
-    await migrateOldOrders();
+    await migrateOldOrders(trackerCache);  // Pass the cached tracker
     console.log('✅ Recurring processing complete.');
 }, 5 * 60 * 1000);
 

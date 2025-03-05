@@ -1,7 +1,6 @@
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import csvParser from 'csv-parser';
-import { loadTracker } from './tracker.js';
 import { sendAdminAlert } from './utils.js';
 
 dotenv.config();
@@ -20,12 +19,11 @@ const auth = new google.auth.JWT({
 
 const drive = google.drive({ version: 'v3', auth });
 
-async function migrateOldOrders() {
+async function migrateOldOrders(tracker) {
     console.log('🔍 Starting migration scan for old Etsy order files...');
 
     const folderId = process.env.ETSY_ORDERS_FOLDER_ID;
     const processedFolderId = process.env.PROCESSED_ORDERS_FOLDER_ID;
-    const tracker = await loadTracker();
 
     const res = await drive.files.list({
         q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder'`,
@@ -79,11 +77,6 @@ async function moveFileToProcessed(fileId, processedFolderId, ordersFolderId) {
     });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-    migrateOldOrders().catch(async (err) => {
-        console.error('❌ Migration failed:', err);
-        await sendAdminAlert('🚨 Migration Failed', `Migration scan failed:\n${err.message}\n\nStack:\n${err.stack}`);
-    });
-}
+// Remove self-run block (this file should NEVER auto-run directly now)
 
 export { migrateOldOrders };
