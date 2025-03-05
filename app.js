@@ -14,34 +14,22 @@ dotenv.config();
 // Setup Express app
 const app = express();
 
-// Global tracker cache — refreshed every 5 minutes by your existing logic
-let trackerCache = {};  
+// Global tracker cache (private to app.js)
+let trackerCache = {};
 
-// ✅ Health Check (for Render) — Now uses trackerCache (no spam)
+// ✅ Health Check (for Render) — Now uses cached tracker directly
 app.get('/health', (req, res) => {
-    try {
-        const fileCount = Object.keys(trackerCache).length;
-        const latestFile = fileCount > 0 ? Object.keys(trackerCache).sort().pop() : 'None';
+    const fileCount = Object.keys(trackerCache).length;
+    const latestFile = fileCount > 0 ? Object.keys(trackerCache).sort().pop() : 'None';
 
-        res.json({
-            status: 'ok',
-            trackedFiles: fileCount,
-            lastOrderProcessed: latestFile
-        });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
+    res.json({
+        status: 'ok',
+        trackedFiles: fileCount,
+        lastOrderProcessed: latestFile
+    });
 });
 
-// Example of how trackerCache should be refreshed (this already exists in your app.js):
-setInterval(async () => {
-    trackerCache = await loadTracker();  // refresh the cache every 5 minutes
-    await processAllOrders(trackerCache);
-    await migrateOldOrders();
-    console.log('✅ Recurring order processing and migration complete.');
-}, 5 * 60 * 1000);
-
-// ✅ Status Check (for Admin Monitoring)
+// ✅ Status Check (for Admin Monitoring) — Now passes trackerCache
 app.get('/status', (req, res) => getStatus(req, res, trackerCache));
 
 // Setup Google Drive Auth
@@ -76,8 +64,7 @@ async function cleanupOldCompletedOrders() {
     }
 }
 
-
-// ⏱️ Recurring Tracker Load (every 5 minutes)
+// Refresh tracker every 5 minutes
 async function refreshTracker() {
     trackerCache = await loadTracker();
     console.log(`♻️ Tracker refreshed from Google Drive at ${new Date().toISOString()}`);
@@ -87,7 +74,7 @@ async function refreshTracker() {
 async function startup() {
     console.log('🚀 Running initial processing & cleanup at startup...');
     try {
-        await refreshTracker(); // Load tracker once at startup
+        await refreshTracker();
         await processAllOrders(trackerCache);
         await migrateOldOrders();
         await cleanupOldCompletedOrders();
@@ -98,7 +85,7 @@ async function startup() {
     }
 }
 
-// ⏱️ Recurring Order Processing (Every 5 minutes)
+// Recurring Jobs (Every 5 Minutes & 60 Minutes)
 setInterval(async () => {
     try {
         await refreshTracker();
@@ -111,7 +98,6 @@ setInterval(async () => {
     }
 }, 5 * 60 * 1000);
 
-// ⏱️ Recurring Cleanup (Every 60 minutes)
 setInterval(async () => {
     try {
         await cleanupOldCompletedOrders();
@@ -122,7 +108,7 @@ setInterval(async () => {
     }
 }, 60 * 60 * 1000);
 
-// 🌅 Daily Reset for Error Notifications (At midnight)
+// Daily Reset (Midnight)
 function scheduleDailyReset() {
     const now = new Date();
     const nextMidnight = new Date(now);
@@ -137,7 +123,7 @@ function scheduleDailyReset() {
     console.log('🕛 Scheduled daily error notification reset.');
 }
 
-// 🚀 Start Server + Initial Processing
+// Start Express Server + Initial Processing
 app.listen(3000, async () => {
     console.log('✅ narrARTive Automation Service is running...');
     scheduleDailyReset();
