@@ -7,7 +7,7 @@ import { saveTracker } from './tracker.js';
 import { createZip, uploadFile, sendEmail, deleteLocalFiles } from './fileHandler.js';
 import { generatePassword, sendAdminAlert } from './utils.js';
 import { sendErrorNotification } from './notifier.js';
-import { recordError } from '../routes/status.js';
+import { recordError } from './errorTracker.js';
 
 dotenv.config();
 
