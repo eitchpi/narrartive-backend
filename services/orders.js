@@ -6,6 +6,8 @@ import csvParser from 'csv-parser';
 import { loadTracker, saveTracker } from './tracker.js';
 import { createZip, uploadFile, sendEmail, deleteLocalFiles } from './fileHandler.js';
 import { generatePassword, sendAdminAlert } from './utils.js';
+import { sendErrorNotification } from './notifier.js';
+
 
 dotenv.config();
 
@@ -104,6 +106,7 @@ async function processAllOrders() {
         } catch (err) {
             console.error(`❌ Failed to process order ${orderNumber}:`, err);
             await sendAdminAlert(`🚨 Order Processing Failed: ${orderNumber}`, `Error: ${err.message}\nStack: ${err.stack}`);
+            await sendErrorNotification(order.id, err.message);
         }
     }
 
