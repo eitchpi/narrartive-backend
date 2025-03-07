@@ -15,6 +15,17 @@ function sanitizeProductName(rawName) {
     return rawName.split(' - ')[0].trim();
 }
 
+function extractProductName(rawName) {
+    const dashIndex = rawName.indexOf(' - ');
+    return dashIndex !== -1 ? rawName.substring(0, dashIndex).trim() : rawName.trim();
+}
+
+function extractVariationValue(rawSize) {
+    if (!rawSize) return '';  // Handle empty values gracefully
+    const parts = rawSize.split(':');
+    return parts.length > 1 ? parts[1].trim() : rawSize.trim();  // Works for both "Size: A4" and just "A4"
+}
+
 const credentials = {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,
     private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\n/g, '\n'),
