@@ -155,75 +155,59 @@ async function processSingleOrder(orderNumber, orderItems) {
     const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
     const thankYouFolderId = await getSubfolderId(narrARTiveFolderId, 'Thank You Card');
 
-    const order = orderItems[0];  // First item defines product
-    const rawProductName = order['Product Name'].trim();
-    const productName = extractProductName(rawProductName);
+    for (const order of orderItems) {
+        const rawProductName = order['Product Name'];
+        const productName = extractProductName(rawProductName);
 
-    // 🕵️‍♂️ Search inside all collections for the product folder
-    const productFolderId = await findProductFolder(narrARTiveFolderId, productName);
-    if (!productFolderId) {
-        throw new Error(`Product folder "${productName}" not found in any collection folder inside narrARTive.`);
+        const productFolderId = await getSubfolderId(narrARTiveFolderId, productName);
+        if (!productFolderId) {
+            throw new Error(`Product folder not found for: ${productName}`);
+        }
+
+        // Try A2 or 40x40 inside product folder
+        const sizeFolderId = await findFormatFolder(productFolderId);
+        if (!sizeFolderId) {
+            throw new Error(`Neither A2 nor 40x40 found inside product folder: ${productName}`);
+        }
+
+        await downloadAllFilesInFolder(sizeFolderId, tempFolder);
     }
 
-    // 🔍 Look for A2 or 40x40 directly inside the product folder
-    let sizeFolderId = await getSubfolderId(productFolderId, 'A2');
-    if (!sizeFolderId) {
-        sizeFolderId = await getSubfolderId(productFolderId, '40x40');
-    }
-    if (!sizeFolderId) {
-        throw new Error(`Neither A2 nor 40x40 found inside product folder: ${productName}`);
-    }
-
-    // 📥 Download all files from size folder
-    await downloadAllFilesInFolder(sizeFolderId, tempFolder);
-
-    // 📥 Download Thank You Card
     const thankYouFiles = await downloadAllFilesInFolder(thankYouFolderId, tempFolder);
     if (thankYouFiles.length === 0) {
-        throw new Error('Thank You Card folder is empty or failed to download.');
+        throw new Error('Thank You Card folder is empty or files failed to download — cannot proceed');
     }
 
-    // 📦 Create Zip
     const zipPath = `./Order_${orderNumber}.zip`;
     const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
-    const password = generatePassword(order);
+    const password = generatePassword(orderItems[0]);
 
     await createZip(zipPath, filesToZip, password);
-
-    // ☁️ Upload to Google Drive & Send Email
     const uploadedFileId = await uploadFile(zipPath);
     const downloadLink = `https://drive.google.com/file/d/${uploadedFileId}/view?usp=sharing`;
 
     await sendEmail(
-        order['Buyer Email'],
+        orderItems[0]['Buyer Email'],
         'Your Artwork is Ready!',
         downloadLink,
         password,
-        order['Buyer Name']
+        orderItems[0]['Buyer Name']
     );
 
-    // 🧹 Cleanup
     deleteLocalFiles([...filesToZip, zipPath]);
     fs.rmSync(tempFolder, { recursive: true, force: true });
 }
 
-/**
- * Find a product folder by searching all collections inside narrARTive.
- */
-async function findProductFolder(narrARTiveFolderId, productName) {
-    const collections = await listSubfolders(narrARTiveFolderId);
+async function findFormatFolder(productFolderId) {
+    const subfolders = await listSubfolders(productFolderId);
 
-    for (const collection of collections) {
-        const productFolders = await listSubfolders(collection.id);
-        for (const productFolder of productFolders) {
-            if (productFolder.name.trim() === productName) {
-                console.log(`✅ Found product "${productName}" inside collection "${collection.name}"`);
-                return productFolder.id;  // This is now the correct product folder
-            }
-        }
+    if (subfolders.includes('A4')) {
+        return await getSubfolderId(productFolderId, 'A4');
+    } else if (subfolders.includes('20x20')) {
+        return await getSubfolderId(productFolderId, '20x20');
     }
 
-    return null;  // Product not found in any collection
+    return null;  // Neither found
 }
 
 async function listSubfolders(parentFolderId) {
