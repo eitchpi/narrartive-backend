@@ -202,12 +202,6 @@ async function processSingleOrder(orderNumber, orderItems) {
 }
 
 
-// Helper function (add this near the top of orders.js)
-function extractVariationValue(variationString) {
-    const parts = variationString.split(':');
-    return parts.length > 1 ? parts[1].trim() : variationString.trim();
-}
-
 async function getSubfolderId(parentFolderId, subfolderName) {
     const res = await drive.files.list({
         q: `name='${subfolderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
