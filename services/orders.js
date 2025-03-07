@@ -146,6 +146,27 @@ async function processAllOrders(tracker) {
     }
 }
 
+async function getProductFolderId(productName) {
+    const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
+    
+    // Get a list of all top-level folders in Google Drive
+    const parentFolders = await listSubfolders(narrARTiveFolderId);
+    
+    for (const parentFolder of parentFolders) {
+        console.log(`🔍 Searching in: ${parentFolder.name}`);
+
+        // Look inside each folder to find the product
+        const productFolderId = await getSubfolderId(parentFolder.id, productName);
+        if (productFolderId) {
+            return productFolderId;
+        }
+    }
+
+    console.error(`❌ Product folder not found: "${productName}"`);
+    return null; // Return null if the product folder is not found
+}
+
+
 async function processSingleOrder(orderNumber, orderItems) {
     const tempFolder = `./temp_${orderNumber}`;
     if (fs.existsSync(tempFolder)) {
@@ -154,8 +175,7 @@ async function processSingleOrder(orderNumber, orderItems) {
     fs.mkdirSync(tempFolder, { recursive: true });
 
     const products = await loadProductList();
-    const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
-    const thankYouFolderId = await getSubfolderId(narrARTiveFolderId, 'Thank You Card');
+    const thankYouFolderId = await getSubfolderId(process.env.NARRARTIVE_FOLDER_ID, 'Thank You Card');
 
     for (const order of orderItems) {
         const rawProductName = order['Product Name'].trim();
@@ -163,12 +183,9 @@ async function processSingleOrder(orderNumber, orderItems) {
 
         console.log(`🔍 Looking for product folder: "${productName}"`);
 
-        const productFolderId = await getSubfolderId(narrARTiveFolderId, productName);
+        const productFolderId = await getProductFolderId(productName);
         if (!productFolderId) {
-            // Log all available folders to help debugging
-            const availableFolders = await listSubfolders(narrARTiveFolderId);
             console.error(`❌ Product folder not found: "${productName}"`);
-            console.error(`📂 Available folders: ${availableFolders.map(f => f.name).join(', ')}`);
             throw new Error(`Product folder not found: "${productName}" (Check Google Drive folders)`);
         }
 
@@ -213,7 +230,6 @@ async function processSingleOrder(orderNumber, orderItems) {
     deleteLocalFiles([...filesToZip, zipPath]);
     fs.rmSync(tempFolder, { recursive: true, force: true });
 }
-
 
 async function findFormatFolder(productFolderId) {
     const subfolders = await listSubfolders(productFolderId);
