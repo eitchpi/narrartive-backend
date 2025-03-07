@@ -136,29 +136,25 @@ async function processAllOrders(tracker) {
 
 async function processSingleOrder(orderNumber, orderItems) {
     const tempFolder = `./temp_${orderNumber}`;
-    if (fs.existsSync(tempFolder)) {
-        fs.rmSync(tempFolder, { recursive: true, force: true });
-    }
+    if (fs.existsSync(tempFolder)) fs.rmSync(tempFolder, { recursive: true, force: true });
     fs.mkdirSync(tempFolder, { recursive: true });
 
     const products = await loadProductList();
     const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
     const thankYouFolderId = await getSubfolderId(narrARTiveFolderId, 'Thank You Card');
 
-    function sanitizeProductName(rawName) {
-        return rawName.split(' - ')[0].trim();
-    }
-
     for (const order of orderItems) {
         const rawProductName = order['Product Name'];
-        const productName = sanitizeProductName(rawProductName);
+        const productName = extractCleanProductName(rawProductName);
 
-        const product = products.find(p => sanitizeProductName(p['Product Name']) === productName);
+        const product = products.find(p => extractCleanProductName(p['Product Name']) === productName);
         if (!product) throw new Error(`Product not found in list: ${rawProductName} (Sanitized: ${productName})`);
 
         const collectionId = await getSubfolderId(narrARTiveFolderId, product['Collection']);
         const productFolderId = await getSubfolderId(collectionId, productName);
-        const sizeFolderId = await getSubfolderId(productFolderId, order['Size'].trim());
+
+        const cleanSize = extractVariationValue(order['Size']);
+        const sizeFolderId = await getSubfolderId(productFolderId, cleanSize);
 
         await downloadAllFilesInFolder(sizeFolderId, tempFolder);
     }
@@ -172,10 +168,8 @@ async function processSingleOrder(orderNumber, orderItems) {
     const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
     const password = generatePassword(orderItems[0]);
 
-    // Actually create the ZIP file here
     await createZip(zipPath, filesToZip, password);
 
-    // Continue with upload & email
     const uploadedFileId = await uploadFile(zipPath);
     const downloadLink = `https://drive.google.com/file/d/${uploadedFileId}/view?usp=sharing`;
 
@@ -187,9 +181,14 @@ async function processSingleOrder(orderNumber, orderItems) {
         orderItems[0]['Buyer Name']
     );
 
-    // Cleanup after everything succeeded
     deleteLocalFiles([...filesToZip, zipPath]);
     fs.rmSync(tempFolder, { recursive: true, force: true });
+}
+
+// Helper function (add this near the top of orders.js)
+function extractVariationValue(variationString) {
+    const parts = variationString.split(':');
+    return parts.length > 1 ? parts[1].trim() : variationString.trim();
 }
 
 async function getSubfolderId(parentFolderId, subfolderName) {
