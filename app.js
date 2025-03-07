@@ -8,27 +8,24 @@ import { loadTracker } from './services/tracker.js';
 import { getStatus } from './routes/status.js';
 import { resetDailyFailures } from './services/notifier.js';
 
-// Load environment variables
 dotenv.config();
 
-// Setup Express app
 const app = express();
+let trackerCache = {};  // Global tracker cache for health/status and migrations
 
-// Global tracker cache (for /health and /status)
-let trackerCache = {};
-
-// ✅ Health Check (for Render) — no spam
+// ✅ Health Check
 app.get('/health', (req, res) => {
-    try {
-        const fileCount = Object.keys(trackerCache).length;
-        const latestFile = fileCount > 0 ? Object.keys(trackerCache).sort().pop() : 'None';
-        res.json({ status: 'ok', trackedFiles: fileCount, lastOrderProcessed: latestFile });
-    } catch (err) {
-        res.status(500).json({ status: 'error', message: err.message });
-    }
+    const fileCount = Object.keys(trackerCache).length;
+    const latestFile = fileCount > 0 ? Object.keys(trackerCache).sort().pop() : 'None';
+
+    res.json({
+        status: 'ok',
+        trackedFiles: fileCount,
+        lastOrderProcessed: latestFile
+    });
 });
 
-// ✅ Status Check (for Admin Monitoring)
+// ✅ Status Check
 app.get('/status', (req, res) => getStatus(req, res, trackerCache));
 
 // Setup Google Drive Auth
@@ -44,6 +41,12 @@ const auth = new google.auth.JWT({
     scopes: ['https://www.googleapis.com/auth/drive'],
 });
 const drive = google.drive({ version: 'v3', auth });
+
+// ♻️ Tracker Refresh
+async function refreshTracker() {
+    trackerCache = await loadTracker();
+    console.log(`♻️ Tracker refreshed from Google Drive at ${new Date().toISOString()}`);
+}
 
 // 🧹 Cleanup old completed files (older than 24h)
 async function cleanupOldCompletedOrders() {
@@ -63,41 +66,35 @@ async function cleanupOldCompletedOrders() {
     }
 }
 
-// ♻️ Recurring Tracker Refresh
-async function refreshTracker() {
-    trackerCache = await loadTracker();
-    console.log(`♻️ Tracker refreshed from Google Drive at ${new Date().toISOString()}`);
-}
-
-// 🚀 Initial Processing & Cleanup
+// 🚀 Initial Processing
 async function startup() {
-    console.log('🚀 Running initial processing & cleanup...');
+    console.log('🚀 Running initial processing & cleanup at startup...');
     try {
         await refreshTracker();
         await processAllOrders(trackerCache);
-        await migrateOldOrders();
+        await migrateOldOrders(trackerCache);
         await cleanupOldCompletedOrders();
-        console.log('✅ Initial processing, migration & cleanup complete.');
+        console.log('✅ Initial processing complete.');
     } catch (err) {
         console.error('❌ Initial processing failed:', err);
         await sendAdminAlert('🚨 Initial Processing Failed', `Error: ${err.message}\n\n${err.stack}`);
     }
 }
 
-// ⏱️ Recurring Order Processing (Every 5 minutes)
+// ⏱️ Recurring Processing (Every 5 mins)
 setInterval(async () => {
     try {
         await refreshTracker();
         await processAllOrders(trackerCache);
-        await migrateOldOrders();
-        console.log('✅ Recurring order processing and migration complete.');
+        await migrateOldOrders(trackerCache);
+        console.log('✅ Recurring processing complete.');
     } catch (err) {
-        console.error('❌ Recurring order processing failed:', err);
+        console.error('❌ Recurring processing failed:', err);
         await sendAdminAlert('🚨 Recurring Processing Failed', `Error: ${err.message}\n\n${err.stack}`);
     }
 }, 5 * 60 * 1000);
 
-// ⏱️ Recurring Cleanup (Every 60 minutes)
+// ⏱️ Recurring Cleanup (Every 60 mins)
 setInterval(async () => {
     try {
         await cleanupOldCompletedOrders();
@@ -108,7 +105,7 @@ setInterval(async () => {
     }
 }, 60 * 60 * 1000);
 
-// 🌅 Daily Reset for Error Notifications (At midnight)
+// 🌅 Daily Reset (Midnight)
 function scheduleDailyReset() {
     const now = new Date();
     const nextMidnight = new Date(now);
@@ -119,10 +116,10 @@ function scheduleDailyReset() {
         resetDailyFailures();
         scheduleDailyReset();
     }, nextMidnight - now);
+
     console.log('🕛 Scheduled daily error notification reset.');
 }
 
-// 🌐 Start Server + Initial Run
 app.listen(3000, async () => {
     console.log('✅ narrARTive Automation Service is running...');
     scheduleDailyReset();

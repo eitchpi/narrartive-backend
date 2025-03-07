@@ -7,7 +7,7 @@ dotenv.config();
 
 const credentials = {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\n/g, '\n'),
+    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
     project_id: process.env.GOOGLE_PROJECT_ID,
 };
 
@@ -20,10 +20,9 @@ const auth = new google.auth.JWT({
 const drive = google.drive({ version: 'v3', auth });
 
 async function migrateOldOrders(tracker) {
-    console.log('🔍 Starting migration scan for old Etsy order files...');
-
     const folderId = process.env.ETSY_ORDERS_FOLDER_ID;
     const processedFolderId = process.env.PROCESSED_ORDERS_FOLDER_ID;
+    console.log('🔍 Starting migration scan for old Etsy order files...');
 
     const res = await drive.files.list({
         q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder'`,
@@ -76,7 +75,5 @@ async function moveFileToProcessed(fileId, processedFolderId, ordersFolderId) {
         fields: 'id, parents'
     });
 }
-
-// Remove self-run block (this file should NEVER auto-run directly now)
 
 export { migrateOldOrders };
