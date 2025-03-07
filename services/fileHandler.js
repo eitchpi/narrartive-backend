@@ -1,5 +1,3 @@
-// fileHandler.js - Handles file zipping, uploading, email sending, and cleanup
-
 import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';

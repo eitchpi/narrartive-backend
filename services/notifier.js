@@ -39,7 +39,7 @@ export async function sendErrorNotification(orderNumber, message) {
     `;
 
     try {
-        await transporter.sendMail({
+        await transporter.sendEmail({
             from: 'noreply@narrartive.de',
             to: recipient,
             subject,
