@@ -157,41 +157,34 @@ async function processSingleOrder(orderNumber, orderItems) {
     const thankYouFolderId = await getSubfolderId(narrARTiveFolderId, 'Thank You Card');
 
     for (const order of orderItems) {
-        const rawProductName = order['Product Name'];
+        const rawProductName = order['Product Name'].trim();
         const productName = extractProductName(rawProductName);
         
-        const product = products.find(p => p['Product Name'].trim() === productName);
-        if (!product) {
-            throw new Error(`Product not found in list: ${rawProductName} (Sanitized: ${productName})`);
-        }
+        console.log(`🔍 Looking for product: "${productName}"`);
 
-        // 🔍 Find Product Folder Inside Google Drive
         const productFolderId = await getSubfolderId(narrARTiveFolderId, productName);
         if (!productFolderId) {
-            throw new Error(`Product folder not found: ${productName}`);
+            throw new Error(`❌ Product folder not found: ${productName}`);
         }
 
-        // 🔎 Try to find either "A4" or "20x20" inside the product folder
-        let sizeFolderId = await getSubfolderId(productFolderId, "A4");
-        if (!sizeFolderId) {
-            sizeFolderId = await getSubfolderId(productFolderId, "20x20");
+        // Find the correct format folder (A2 or 40x40)
+        const formatFolderId = await findFormatFolder(productFolderId);
+        if (!formatFolderId) {
+            throw new Error(`❌ Format folder (A2 or 40x40) not found for: ${productName}`);
         }
 
-        if (!sizeFolderId) {
-            throw new Error(`Neither A4 nor 20x20 folder found inside product folder: ${productName}`);
-        }
+        console.log(`📂 Found format folder for "${productName}": ${formatFolderId}`);
 
-        // ✅ Download all files inside the correct size folder
-        await downloadAllFilesInFolder(sizeFolderId, tempFolder);
+        await downloadAllFilesInFolder(formatFolderId, tempFolder);
     }
 
-    // ✅ Download the Thank You Card
+    // Add Thank You Card
     const thankYouFiles = await downloadAllFilesInFolder(thankYouFolderId, tempFolder);
     if (thankYouFiles.length === 0) {
-        throw new Error('Thank You Card folder is empty or files failed to download — cannot proceed');
+        throw new Error('❌ Thank You Card folder is empty or files failed to download — cannot proceed');
     }
 
-    // ✅ Create ZIP, Upload, and Send Email
+    // Zip and upload the package
     const zipPath = `./Order_${orderNumber}.zip`;
     const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
     const password = generatePassword(orderItems[0]);
@@ -208,11 +201,24 @@ async function processSingleOrder(orderNumber, orderItems) {
         orderItems[0]['Buyer Name']
     );
 
-    // 🧹 Cleanup Temp Files
+    console.log(`✅ Order ${orderNumber} processed successfully.`);
+    
+    // Cleanup
     deleteLocalFiles([...filesToZip, zipPath]);
     fs.rmSync(tempFolder, { recursive: true, force: true });
 }
 
+async function findFormatFolder(productFolderId) {
+    const subfolders = await listSubfolders(productFolderId);
+    
+    if (subfolders.includes('A2')) {
+        return await getSubfolderId(productFolderId, 'A2');
+    } else if (subfolders.includes('40x40')) {
+        return await getSubfolderId(productFolderId, '40x40');
+    }
+
+    return null;  // Neither found
+}
 
 async function listSubfolders(parentFolderId) {
     const res = await drive.files.list({
