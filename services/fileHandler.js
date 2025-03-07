@@ -82,6 +82,8 @@ async function sendEmail(to, subject, link, password, name) {
     }
 }
 
+console.log("🔑 BREVO API KEY:", process.env.BREVO_SMTP_KEY ? "Loaded ✅" : "Not Found ❌");
+
 function deleteLocalFiles(files) {
     files.forEach(file => {
         if (fs.existsSync(file)) {
