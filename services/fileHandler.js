@@ -52,7 +52,7 @@ async function uploadFile(filePath) {
     return file.data.id;
 }
 
-async function sendMail(to, subject, link, password, name) {
+async function sendEmail(to, subject, link, password, name) {
     console.log(`📧 Attempting to send email to: ${to}`);
 
     const emailData = {
