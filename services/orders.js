@@ -155,42 +155,42 @@ async function processSingleOrder(orderNumber, orderItems) {
     const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
     const thankYouFolderId = await getSubfolderId(narrARTiveFolderId, 'Thank You Card');
 
-    const order = orderItems[0];  // First item defines product name
+    const order = orderItems[0];  // First item defines product
     const rawProductName = order['Product Name'].trim();
-    const productName = extractProductName(rawProductName);  // You already have this function
+    const productName = extractProductName(rawProductName);
 
-    // 🔎 Search all collections for product folder
+    // 🕵️‍♂️ Search inside all collections for the product folder
     const productFolderId = await findProductFolder(narrARTiveFolderId, productName);
     if (!productFolderId) {
-        throw new Error(`Product folder not found for "${productName}" inside any collection folder.`);
+        throw new Error(`Product folder "${productName}" not found in any collection folder inside narrARTive.`);
     }
 
-    // ✅ Check for A2 or 40x40 inside the product folder
+    // 🔍 Look for A2 or 40x40 directly inside the product folder
     let sizeFolderId = await getSubfolderId(productFolderId, 'A2');
     if (!sizeFolderId) {
         sizeFolderId = await getSubfolderId(productFolderId, '40x40');
     }
-
     if (!sizeFolderId) {
         throw new Error(`Neither A2 nor 40x40 found inside product folder: ${productName}`);
     }
 
-    // ✅ Download files from the correct size folder
+    // 📥 Download all files from size folder
     await downloadAllFilesInFolder(sizeFolderId, tempFolder);
 
-    // ✅ Download Thank You card
+    // 📥 Download Thank You Card
     const thankYouFiles = await downloadAllFilesInFolder(thankYouFolderId, tempFolder);
     if (thankYouFiles.length === 0) {
-        throw new Error('Thank You Card folder is empty or files failed to download — cannot proceed');
+        throw new Error('Thank You Card folder is empty or failed to download.');
     }
 
-    // ✅ Create zip, upload & send email
+    // 📦 Create Zip
     const zipPath = `./Order_${orderNumber}.zip`;
     const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
     const password = generatePassword(order);
 
     await createZip(zipPath, filesToZip, password);
 
+    // ☁️ Upload to Google Drive & Send Email
     const uploadedFileId = await uploadFile(zipPath);
     const downloadLink = `https://drive.google.com/file/d/${uploadedFileId}/view?usp=sharing`;
 
@@ -202,13 +202,13 @@ async function processSingleOrder(orderNumber, orderItems) {
         order['Buyer Name']
     );
 
-    // ✅ Cleanup
+    // 🧹 Cleanup
     deleteLocalFiles([...filesToZip, zipPath]);
     fs.rmdirSync(tempFolder, { recursive: true });
 }
 
 /**
- * Recursively find a product folder inside any collection.
+ * Find a product folder by searching all collections inside narrARTive.
  */
 async function findProductFolder(parentFolderId, productName) {
     const collections = await listSubfolders(parentFolderId);
@@ -216,23 +216,25 @@ async function findProductFolder(parentFolderId, productName) {
     for (const collection of collections) {
         const productFolderId = await getSubfolderId(collection.id, productName);
         if (productFolderId) {
-            return productFolderId;  // Found product inside this collection
+            console.log(`✅ Found product "${productName}" inside collection: ${collection.name}`);
+            return productFolderId;
         }
     }
 
-    return null;  // Not found in any collection
+    console.warn(`⚠️ Product "${productName}" not found in any collection inside narrARTive.`);
+    return null;
 }
 
 /**
- * Helper to list all subfolders inside a parent folder.
+ * List all subfolders directly inside a folder.
  */
 async function listSubfolders(parentFolderId) {
     const res = await drive.files.list({
-        q: `'${parentFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder'`,
+        q: `'${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
         fields: 'files(id, name)'
     });
 
-    return res.data.files;
+    return res.data.files || [];
 }
 
 async function getSubfolderId(parentFolderId, subfolderName) {
