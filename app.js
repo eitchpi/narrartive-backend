@@ -14,20 +14,24 @@ dotenv.config();
 // Setup Express app
 const app = express();
 
-// Global tracker cache — lives only here
-let trackerCache = {};  
+// Global tracker cache (for /health and /status)
+let trackerCache = {};
 
-// ✅ Health Check (no spam)
+// ✅ Health Check (for Render) — no spam
 app.get('/health', (req, res) => {
-    const fileCount = Object.keys(trackerCache).length;
-    const latestFile = fileCount > 0 ? Object.keys(trackerCache).sort().pop() : 'None';
-    res.json({ status: 'ok', trackedFiles: fileCount, lastOrderProcessed: latestFile });
+    try {
+        const fileCount = Object.keys(trackerCache).length;
+        const latestFile = fileCount > 0 ? Object.keys(trackerCache).sort().pop() : 'None';
+        res.json({ status: 'ok', trackedFiles: fileCount, lastOrderProcessed: latestFile });
+    } catch (err) {
+        res.status(500).json({ status: 'error', message: err.message });
+    }
 });
 
-// ✅ Status Check — passes cache directly
+// ✅ Status Check (for Admin Monitoring)
 app.get('/status', (req, res) => getStatus(req, res, trackerCache));
 
-// Setup Google Drive Auth (unchanged)
+// Setup Google Drive Auth
 const credentials = {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,
     private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -41,6 +45,7 @@ const auth = new google.auth.JWT({
 });
 const drive = google.drive({ version: 'v3', auth });
 
+// 🧹 Cleanup old completed files (older than 24h)
 async function cleanupOldCompletedOrders() {
     const folderId = process.env.COMPLETED_ORDERS_FOLDER_ID;
     const res = await drive.files.list({
@@ -50,40 +55,60 @@ async function cleanupOldCompletedOrders() {
 
     const threshold = Date.now() - 24 * 60 * 60 * 1000;
     for (const file of res.data.files) {
-        if (new Date(file.createdTime).getTime() < threshold) {
+        const createdTime = new Date(file.createdTime).getTime();
+        if (createdTime < threshold) {
             await drive.files.delete({ fileId: file.id });
             console.log(`🧹 Deleted old completed order file: ${file.id}`);
         }
     }
 }
 
-// Refresh tracker every 5 minutes
+// ♻️ Recurring Tracker Refresh
 async function refreshTracker() {
     trackerCache = await loadTracker();
     console.log(`♻️ Tracker refreshed from Google Drive at ${new Date().toISOString()}`);
 }
 
-// Initial Processing
+// 🚀 Initial Processing & Cleanup
 async function startup() {
-    console.log('🚀 Running initial processing & cleanup at startup...');
-    await refreshTracker();
-    await processAllOrders(trackerCache);
-    await migrateOldOrders(trackerCache);  // Pass the cached tracker
-    await cleanupOldCompletedOrders();
-    console.log('✅ Initial processing complete.');
+    console.log('🚀 Running initial processing & cleanup...');
+    try {
+        await refreshTracker();
+        await processAllOrders(trackerCache);
+        await migrateOldOrders();
+        await cleanupOldCompletedOrders();
+        console.log('✅ Initial processing, migration & cleanup complete.');
+    } catch (err) {
+        console.error('❌ Initial processing failed:', err);
+        await sendAdminAlert('🚨 Initial Processing Failed', `Error: ${err.message}\n\n${err.stack}`);
+    }
 }
 
-// Recurring jobs
+// ⏱️ Recurring Order Processing (Every 5 minutes)
 setInterval(async () => {
-    await refreshTracker();
-    await processAllOrders(trackerCache);
-    await migrateOldOrders(trackerCache);  // Pass the cached tracker
-    console.log('✅ Recurring processing complete.');
+    try {
+        await refreshTracker();
+        await processAllOrders(trackerCache);
+        await migrateOldOrders();
+        console.log('✅ Recurring order processing and migration complete.');
+    } catch (err) {
+        console.error('❌ Recurring order processing failed:', err);
+        await sendAdminAlert('🚨 Recurring Processing Failed', `Error: ${err.message}\n\n${err.stack}`);
+    }
 }, 5 * 60 * 1000);
 
-setInterval(cleanupOldCompletedOrders, 60 * 60 * 1000);
+// ⏱️ Recurring Cleanup (Every 60 minutes)
+setInterval(async () => {
+    try {
+        await cleanupOldCompletedOrders();
+        console.log('✅ Recurring cleanup complete.');
+    } catch (err) {
+        console.error('❌ Recurring cleanup failed:', err);
+        await sendAdminAlert('🚨 Recurring Cleanup Failed', `Error: ${err.message}\n\n${err.stack}`);
+    }
+}, 60 * 60 * 1000);
 
-// Daily Reset
+// 🌅 Daily Reset for Error Notifications (At midnight)
 function scheduleDailyReset() {
     const now = new Date();
     const nextMidnight = new Date(now);
@@ -94,11 +119,10 @@ function scheduleDailyReset() {
         resetDailyFailures();
         scheduleDailyReset();
     }, nextMidnight - now);
-
     console.log('🕛 Scheduled daily error notification reset.');
 }
 
-// Start Server
+// 🌐 Start Server + Initial Run
 app.listen(3000, async () => {
     console.log('✅ narrARTive Automation Service is running...');
     scheduleDailyReset();
