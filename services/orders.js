@@ -152,66 +152,56 @@ async function processSingleOrder(orderNumber, orderItems) {
     }
     fs.mkdirSync(tempFolder, { recursive: true });
 
-    const products = await loadProductList();
     const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
     const thankYouFolderId = await getSubfolderId(narrARTiveFolderId, 'Thank You Card');
 
-    for (const order of orderItems) {
-        const rawProductName = order['Product Name'].trim();
-        const productName = extractProductName(rawProductName); // Clean product name (same as before)
+    const order = orderItems[0];  // Assuming one product per order (you can adjust if needed)
+    const rawProductName = order['Product Name'].trim();
+    const productName = extractProductName(rawProductName);  // Already defined earlier
 
-        const product = products.find(p => p['Product Name'].trim() === productName);
-        if (!product) {
-            throw new Error(`Product not found in list: ${rawProductName} (Sanitized: ${productName})`);
-        }
+    // ✅ Find the product folder directly under the main folder
+    const productFolderId = await getSubfolderId(narrARTiveFolderId, productName);
 
-        const productFolderId = await getSubfolderId(narrARTiveFolderId, productName);
-
-        // Step 1 - Check if A2 folder exists (standard ratio)
-        let targetFolderId = await getSubfolderId(productFolderId, 'A2');
-        if (targetFolderId) {
-            console.log(`✅ Found A2 folder for product "${productName}" - treating as standard ratio.`);
-        } else {
-            // Step 2 - If no A2, check for 40x40 folder (square ratio)
-            targetFolderId = await getSubfolderId(productFolderId, '40x40');
-            if (targetFolderId) {
-                console.log(`✅ Found 40x40 folder for product "${productName}" - treating as square ratio.`);
-            } else {
-                throw new Error(`Neither A2 nor 40x40 folder found for product: ${productName}`);
-            }
-        }
-
-        // Step 3 - Download everything inside the correct folder (A2 or 40x40)
-        await downloadAllFilesInFolder(targetFolderId, tempFolder);
+    // ✅ Try A2 first, fallback to 40x40
+    let sizeFolderId = await getSubfolderId(productFolderId, 'A2');
+    if (!sizeFolderId) {
+        sizeFolderId = await getSubfolderId(productFolderId, '40x40');
     }
 
-    // Step 4 - Download thank you card
+    if (!sizeFolderId) {
+        throw new Error(`Neither A2 nor 40x40 found for product: ${productName}`);
+    }
+
+    // ✅ Download all files from the found size folder
+    await downloadAllFilesInFolder(sizeFolderId, tempFolder);
+
+    // ✅ Download the Thank You card (same for all)
     const thankYouFiles = await downloadAllFilesInFolder(thankYouFolderId, tempFolder);
     if (thankYouFiles.length === 0) {
         throw new Error('Thank You Card folder is empty or files failed to download — cannot proceed');
     }
 
-    // Step 5 - Create ZIP with password
+    // ✅ Create ZIP & send email
     const zipPath = `./Order_${orderNumber}.zip`;
     const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
-    const password = generatePassword(orderItems[0]);
+    const password = generatePassword(order);  // Same as before
 
     await createZip(zipPath, filesToZip, password);
+
     const uploadedFileId = await uploadFile(zipPath);
     const downloadLink = `https://drive.google.com/file/d/${uploadedFileId}/view?usp=sharing`;
 
-    // Step 6 - Send email
     await sendEmail(
-        orderItems[0]['Buyer Email'],
+        order['Buyer Email'],
         'Your Artwork is Ready!',
         downloadLink,
         password,
-        orderItems[0]['Buyer Name']
+        order['Buyer Name']
     );
 
-    // Step 7 - Cleanup local files
+    // ✅ Cleanup
     deleteLocalFiles([...filesToZip, zipPath]);
-    fs.rmdirSync(tempFolder);
+    fs.rmdirSync(tempFolder, { recursive: true });
 }
 
 async function getSubfolderId(parentFolderId, subfolderName) {
