@@ -172,6 +172,10 @@ async function processSingleOrder(orderNumber, orderItems) {
     const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
     const password = generatePassword(orderItems[0]);
 
+    // Actually create the ZIP file here
+    await createZip(zipPath, filesToZip, password);
+
+    // Continue with upload & email
     const uploadedFileId = await uploadFile(zipPath);
     const downloadLink = `https://drive.google.com/file/d/${uploadedFileId}/view?usp=sharing`;
 
@@ -183,9 +187,10 @@ async function processSingleOrder(orderNumber, orderItems) {
         orderItems[0]['Buyer Name']
     );
 
-    // ✅ Cleanup after processing
+    // Cleanup after everything succeeded
     deleteLocalFiles([...filesToZip, zipPath]);
-    fs.rmdirSync(tempFolder);
+    fs.rmdirSync(tempFolder, { recursive: true, force: true });
+
 }
 
 async function getSubfolderId(parentFolderId, subfolderName) {
