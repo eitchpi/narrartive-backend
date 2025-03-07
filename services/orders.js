@@ -11,6 +11,10 @@ import { recordError } from './errorTracker.js';
 
 dotenv.config();
 
+function sanitizeProductName(rawName) {
+    return rawName.split(' - ')[0].trim();
+}
+
 const credentials = {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,
     private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\n/g, '\n'),
@@ -141,12 +145,19 @@ async function processSingleOrder(orderNumber, orderItems) {
     const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
     const thankYouFolderId = await getSubfolderId(narrARTiveFolderId, 'Thank You Card');
 
+    function sanitizeProductName(rawName) {
+        return rawName.split(' - ')[0].trim();
+    }
+
     for (const order of orderItems) {
-        const product = products.find(p => p['Product Name'].trim() === order['Product Name'].trim());
-        if (!product) throw new Error(`Product not found in list: ${order['Product Name']}`);
+        const rawProductName = order['Product Name'];
+        const productName = sanitizeProductName(rawProductName);
+
+        const product = products.find(p => sanitizeProductName(p['Product Name']) === productName);
+        if (!product) throw new Error(`Product not found in list: ${rawProductName} (Sanitized: ${productName})`);
 
         const collectionId = await getSubfolderId(narrARTiveFolderId, product['Collection']);
-        const productFolderId = await getSubfolderId(collectionId, order['Product Name'].trim());
+        const productFolderId = await getSubfolderId(collectionId, productName);
         const sizeFolderId = await getSubfolderId(productFolderId, order['Size'].trim());
 
         await downloadAllFilesInFolder(sizeFolderId, tempFolder);
@@ -161,7 +172,6 @@ async function processSingleOrder(orderNumber, orderItems) {
     const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
     const password = generatePassword(orderItems[0]);
 
-    await createZip(zipPath, filesToZip, password);
     const uploadedFileId = await uploadFile(zipPath);
     const downloadLink = `https://drive.google.com/file/d/${uploadedFileId}/view?usp=sharing`;
 
@@ -173,6 +183,7 @@ async function processSingleOrder(orderNumber, orderItems) {
         orderItems[0]['Buyer Name']
     );
 
+    // ✅ Cleanup after processing
     deleteLocalFiles([...filesToZip, zipPath]);
     fs.rmdirSync(tempFolder);
 }
