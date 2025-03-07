@@ -204,7 +204,7 @@ async function processSingleOrder(orderNumber, orderItems) {
 
     // 🧹 Cleanup
     deleteLocalFiles([...filesToZip, zipPath]);
-    fs.rmdirSync(tempFolder, { recursive: true });
+    fs.rmSync(tempFolder, { recursive: true, force: true });
 }
 
 /**
