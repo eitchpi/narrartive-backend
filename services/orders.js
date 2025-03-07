@@ -16,6 +16,7 @@ function sanitizeProductName(rawName) {
 }
 
 function extractProductName(rawName) {
+    // Remove anything after the first " - " (hyphen with spaces)
     const dashIndex = rawName.indexOf(' - ');
     return dashIndex !== -1 ? rawName.substring(0, dashIndex).trim() : rawName.trim();
 }
@@ -159,18 +160,23 @@ async function processSingleOrder(orderNumber, orderItems) {
     for (const order of orderItems) {
         const rawProductName = order['Product Name'].trim();
         const productName = extractProductName(rawProductName);
-        
-        console.log(`🔍 Looking for product: "${productName}"`);
+
+        console.log(`🔍 Looking for product folder: "${productName}"`);
 
         const productFolderId = await getSubfolderId(narrARTiveFolderId, productName);
         if (!productFolderId) {
-            throw new Error(`❌ Product folder not found: ${productName}`);
+            // Log all available folders to help debugging
+            const availableFolders = await listSubfolders(narrARTiveFolderId);
+            console.error(`❌ Product folder not found: "${productName}"`);
+            console.error(`📂 Available folders: ${availableFolders.map(f => f.name).join(', ')}`);
+            throw new Error(`Product folder not found: "${productName}" (Check Google Drive folders)`);
         }
 
         // Find the correct format folder (A2 or 40x40)
         const formatFolderId = await findFormatFolder(productFolderId);
         if (!formatFolderId) {
-            throw new Error(`❌ Format folder (A2 or 40x40) not found for: ${productName}`);
+            console.error(`❌ Format folder (A2 or 40x40) not found for: ${productName}`);
+            throw new Error(`Format folder missing: "${productName}" (A2 or 40x40 required)`);
         }
 
         console.log(`📂 Found format folder for "${productName}": ${formatFolderId}`);
@@ -208,6 +214,7 @@ async function processSingleOrder(orderNumber, orderItems) {
     fs.rmSync(tempFolder, { recursive: true, force: true });
 }
 
+
 async function findFormatFolder(productFolderId) {
     const subfolders = await listSubfolders(productFolderId);
     
@@ -230,18 +237,22 @@ async function listSubfolders(parentFolderId) {
 }
 
 
-async function getSubfolderId(parentFolderId, subfolderName) {
+async function getSubfolderId(parentFolderId, targetName) {
     const res = await drive.files.list({
-        q: `name='${subfolderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
+        q: `'${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
         fields: 'files(id, name)'
     });
 
-    if (res.data.files.length === 0) {
-        throw new Error(`Subfolder not found: ${subfolderName} inside parent folder ID ${parentFolderId}`);
-    }
+    const folders = res.data.files || [];
+    
+    // Case-insensitive comparison
+    const matchingFolder = folders.find(folder => 
+        folder.name.trim().toLowerCase() === targetName.trim().toLowerCase()
+    );
 
-    return res.data.files[0].id;
+    return matchingFolder ? matchingFolder.id : null;
 }
+
 
 async function downloadAllFilesInFolder(folderId, destFolder) {
     console.log(`📂 Downloading files from folder: ${folderId}`);
