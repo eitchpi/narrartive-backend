@@ -210,19 +210,29 @@ async function processSingleOrder(orderNumber, orderItems) {
 /**
  * Find a product folder by searching all collections inside narrARTive.
  */
-async function findProductFolder(parentFolderId, productName) {
-    const collections = await listSubfolders(parentFolderId);
+async function findProductFolder(narrARTiveFolderId, productName) {
+    const collections = await listSubfolders(narrARTiveFolderId);
 
     for (const collection of collections) {
-        const productFolderId = await getSubfolderId(collection.id, productName);
-        if (productFolderId) {
-            console.log(`✅ Found product "${productName}" inside collection: ${collection.name}`);
-            return productFolderId;
+        const productFolders = await listSubfolders(collection.id);
+        for (const productFolder of productFolders) {
+            if (productFolder.name.trim() === productName) {
+                console.log(`✅ Found product "${productName}" inside collection "${collection.name}"`);
+                return productFolder.id;  // This is now the correct product folder
+            }
         }
     }
 
-    console.warn(`⚠️ Product "${productName}" not found in any collection inside narrARTive.`);
-    return null;
+    return null;  // Product not found in any collection
+}
+
+async function listSubfolders(parentFolderId) {
+    const res = await drive.files.list({
+        q: `'${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
+        fields: 'files(id, name)'
+    });
+
+    return res.data.files || [];
 }
 
 /**
