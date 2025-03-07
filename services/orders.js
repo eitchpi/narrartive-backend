@@ -233,13 +233,15 @@ async function processSingleOrder(orderNumber, orderItems) {
 
 async function findFormatFolder(productFolderId) {
     const subfolders = await listSubfolders(productFolderId);
-    
-    if (subfolders.includes('A2')) {
+    const folderNames = subfolders.map(f => f.name); // Extract folder names
+
+    if (folderNames.includes('A2')) {
         return await getSubfolderId(productFolderId, 'A2');
-    } else if (subfolders.includes('40x40')) {
+    } else if (folderNames.includes('40x40')) {
         return await getSubfolderId(productFolderId, '40x40');
     }
 
+    console.error(`❌ Format folder (A2 or 40x40) not found for: ${productFolderId}`);
     return null;  // Neither found
 }
 
