@@ -235,17 +235,6 @@ async function listSubfolders(parentFolderId) {
     return res.data.files || [];
 }
 
-/**
- * List all subfolders directly inside a folder.
- */
-async function listSubfolders(parentFolderId) {
-    const res = await drive.files.list({
-        q: `'${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
-        fields: 'files(id, name)'
-    });
-
-    return res.data.files || [];
-}
 
 async function getSubfolderId(parentFolderId, subfolderName) {
     const res = await drive.files.list({
