@@ -158,29 +158,40 @@ async function processSingleOrder(orderNumber, orderItems) {
 
     for (const order of orderItems) {
         const rawProductName = order['Product Name'].trim();
-        const productName = extractProductName(rawProductName);
-        const product = products.find(p => p['Product Name'].trim() === productName);
+        const productName = extractProductName(rawProductName); // Clean product name (same as before)
 
+        const product = products.find(p => p['Product Name'].trim() === productName);
         if (!product) {
             throw new Error(`Product not found in list: ${rawProductName} (Sanitized: ${productName})`);
         }
 
-        const collectionId = await getSubfolderId(narrARTiveFolderId, product['Collection']);
-        const productFolderId = await getSubfolderId(collectionId, productName);
+        const productFolderId = await getSubfolderId(narrARTiveFolderId, productName);
 
-        // NEW — Handle Size variations flexibly
-        const rawSize = order['Size'];
-        const cleanSize = extractVariationValue(rawSize);
+        // Step 1 - Check if A2 folder exists (standard ratio)
+        let targetFolderId = await getSubfolderId(productFolderId, 'A2');
+        if (targetFolderId) {
+            console.log(`✅ Found A2 folder for product "${productName}" - treating as standard ratio.`);
+        } else {
+            // Step 2 - If no A2, check for 40x40 folder (square ratio)
+            targetFolderId = await getSubfolderId(productFolderId, '40x40');
+            if (targetFolderId) {
+                console.log(`✅ Found 40x40 folder for product "${productName}" - treating as square ratio.`);
+            } else {
+                throw new Error(`Neither A2 nor 40x40 folder found for product: ${productName}`);
+            }
+        }
 
-        const sizeFolderId = await getSubfolderId(productFolderId, cleanSize);
-        await downloadAllFilesInFolder(sizeFolderId, tempFolder);
+        // Step 3 - Download everything inside the correct folder (A2 or 40x40)
+        await downloadAllFilesInFolder(targetFolderId, tempFolder);
     }
 
+    // Step 4 - Download thank you card
     const thankYouFiles = await downloadAllFilesInFolder(thankYouFolderId, tempFolder);
     if (thankYouFiles.length === 0) {
         throw new Error('Thank You Card folder is empty or files failed to download — cannot proceed');
     }
 
+    // Step 5 - Create ZIP with password
     const zipPath = `./Order_${orderNumber}.zip`;
     const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
     const password = generatePassword(orderItems[0]);
@@ -189,6 +200,7 @@ async function processSingleOrder(orderNumber, orderItems) {
     const uploadedFileId = await uploadFile(zipPath);
     const downloadLink = `https://drive.google.com/file/d/${uploadedFileId}/view?usp=sharing`;
 
+    // Step 6 - Send email
     await sendEmail(
         orderItems[0]['Buyer Email'],
         'Your Artwork is Ready!',
@@ -197,10 +209,10 @@ async function processSingleOrder(orderNumber, orderItems) {
         orderItems[0]['Buyer Name']
     );
 
+    // Step 7 - Cleanup local files
     deleteLocalFiles([...filesToZip, zipPath]);
     fs.rmdirSync(tempFolder);
 }
-
 
 async function getSubfolderId(parentFolderId, subfolderName) {
     const res = await drive.files.list({
