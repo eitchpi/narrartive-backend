@@ -93,12 +93,13 @@ const FAILED_ORDERS_TRACKER = 'failed_orders_tracker.json';
  */
 export async function loadFailedOrdersTracker() {
     try {
+        // Try reading the file
         const data = await fs.readFile(FAILED_ORDERS_FILE, 'utf8');
         return JSON.parse(data);
     } catch (err) {
         if (err.code === 'ENOENT') {
             console.warn("⚠️ Failed Orders Tracker is missing — creating a new one.");
-            await saveFailedOrdersTracker({}); // Create a blank tracker file
+            await saveFailedOrdersTracker({}); // Create the file automatically
             return {};
         }
         console.error("❌ Failed to load Failed Orders Tracker:", err);
@@ -112,7 +113,7 @@ export async function saveFailedOrdersTracker(data) {
     } catch (err) {
         console.error("❌ Failed to save Failed Orders Tracker:", err);
     }
-}   
+} 
 
 /**
  * Saves the failed orders tracker to Google Drive.
