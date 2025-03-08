@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import path from 'path';
 import { sendAdminAlert } from './utils.js';
-import { drive } from './googleDrive.js'; // Ensure this is your Google Drive client
 
 dotenv.config();
 
