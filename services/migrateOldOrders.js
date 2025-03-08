@@ -71,7 +71,7 @@ async function countOrdersInFile(fileId) {
             .on('end', resolve)
             .on('error', reject);
     });
-
+    
     return orders.length;
 }
 
