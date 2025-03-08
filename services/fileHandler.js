@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { google } from 'googleapis';
-import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -52,25 +51,25 @@ async function uploadFile(filePath) {
 
 import fetch from 'node-fetch';
 
+import fetch from 'node-fetch';
+
 async function sendEmail(to, subject, link, password, name) {
-    console.log(`📧 Attempting to send email to client...‚`);
+    console.log(`📧 Attempting to send email to: ${to}`);
 
     // Ensure environment variables are loaded
-    const smtpKey = process.env.BREVO_SMTP_KEY;
-    const senderEmail = process.env.SENDER_EMAIL;
-
-    if (!smtpKey || !senderEmail) {
-        console.error("❌ Missing Brevo SMTP Key or Sender Email in environment variables.");
+    if (!process.env.BREVO_API_KEY || !process.env.SENDER_EMAIL) {
+        console.error("❌ Missing Brevo API Key or Sender Email in env variables.");
         return;
     }
 
     const emailData = {
-        sender: { email: senderEmail, name: "narrARTive" },
+        sender: { email: process.env.SENDER_EMAIL, name: "narrARTive" },
         to: [{ email: to, name: name }],
         subject: subject,
         htmlContent: `<p>Hello ${name},</p>
                       <p>Your download link is ready: <a href="${link}">${link}</a></p>
-                      <p>Password: <b>${password}</b></p>`
+                      <p>Password: <b>${password}</b></p>
+                      <p>Enjoy your artwork! 🎨</p>`
     };
 
     try {
@@ -78,7 +77,7 @@ async function sendEmail(to, subject, link, password, name) {
             method: 'POST',
             headers: {
                 'accept': 'application/json',
-                'api-key': smtpKey,  // ✅ Using SMTP Key (No Changes to Other Files)
+                'api-key': process.env.BREVO_API_KEY,  // ✅ Correct API Key
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(emailData)
@@ -90,13 +89,6 @@ async function sendEmail(to, subject, link, password, name) {
             console.log(`✅ 📧 Email sent successfully to ${to}:`, result);
         } else {
             console.error(`❌ Email sending failed for ${to}:`, result);
-
-            // Retry once if unauthorized error (401)
-            if (response.status === 401) {
-                console.log("🔄 Retrying email send after authentication failure...");
-                await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 sec before retry
-                return sendEmail(to, subject, link, password, name);
-            }
         }
     } catch (error) {
         console.error(`❌ Email sending error for ${to}:`, error);
