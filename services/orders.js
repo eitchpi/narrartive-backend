@@ -393,4 +393,4 @@ async function downloadAllFilesInFolder(folderId, destFolder) {
     return downloadedFiles;
 }
 
-export { processAllOrders };
+export { processAllOrders, parseCSV };

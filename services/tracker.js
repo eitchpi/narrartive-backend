@@ -1,6 +1,6 @@
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { sendAdminAlert } from './utils.js';
 
@@ -93,22 +93,26 @@ const FAILED_ORDERS_TRACKER = 'failed_orders_tracker.json';
  */
 export async function loadFailedOrdersTracker() {
     try {
-        const content = await fs.promises.readFile('./failed_orders.json', 'utf8');
-        return JSON.parse(content);
-    } catch (error) {
-        console.error(`⚠️ Failed Orders Tracker is corrupted — resetting.`, error);
-
-        // Notify admin via email
-        await sendAdminAlert(
-            "🚨 Failed Orders Tracker Reset",
-            `The failed orders tracker was corrupted and has been reset. Previous failed order data may be lost.<br>Error: ${error.message}`
-        );
-
-        // Reset the tracker and return empty
-        await saveFailedOrdersTracker({});
+        const data = await fs.readFile(FAILED_ORDERS_FILE, 'utf8');
+        return JSON.parse(data);
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            console.warn("⚠️ Failed Orders Tracker is missing — creating a new one.");
+            await saveFailedOrdersTracker({}); // Create a blank tracker file
+            return {};
+        }
+        console.error("❌ Failed to load Failed Orders Tracker:", err);
         return {};
     }
 }
+
+export async function saveFailedOrdersTracker(data) {
+    try {
+        await fs.writeFile(FAILED_ORDERS_FILE, JSON.stringify(data, null, 2));
+    } catch (err) {
+        console.error("❌ Failed to save Failed Orders Tracker:", err);
+    }
+}   
 
 /**
  * Saves the failed orders tracker to Google Drive.
