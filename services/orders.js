@@ -68,11 +68,13 @@ async function loadLatestEtsyOrder() {
     return { fileId: file.id, fileName: file.name, orders };
 }
 
-function parseCsvStream(stream, orders) {
+
+async function parseCSV(stream) {
     return new Promise((resolve, reject) => {
-        stream.pipe(csvParser())
-            .on('data', row => orders.push(row))
-            .on('end', resolve)
+        const results = [];
+        stream.pipe(parse({ columns: true }))
+            .on('data', (data) => results.push(data))
+            .on('end', () => resolve(results))
             .on('error', reject);
     });
 }
@@ -104,7 +106,14 @@ async function processAllOrders() {
     console.log("🔄 Starting order processing...");
 
     const tracker = await loadTracker();
-    const failedOrders = await loadFailedOrdersTracker();
+    let failedOrders = await loadFailedOrdersTracker();
+
+    // Ensure failed_orders.json exists
+    if (!failedOrders) {
+        console.warn("⚠️ Failed Orders Tracker is missing — creating a new one.");
+        failedOrders = {};
+        await saveFailedOrdersTracker(failedOrders);
+    }
 
     const folderId = process.env.ETSY_ORDERS_FOLDER_ID;
     const res = await drive.files.list({
@@ -151,6 +160,7 @@ async function processAllOrders() {
                 } catch (error) {
                     console.error(`❌ Failed to process order ${orderNumber}: ${error.message}`);
                     failedOrdersInFile.push(orderNumber);
+                    failedOrders[orderNumber] = error.message;
                     await logDailyError(orderNumber, error.message);
                 }
             }
@@ -164,15 +174,17 @@ async function processAllOrders() {
 
             tracker[fileName] = true;
             await saveTracker(tracker);
+            await saveFailedOrdersTracker(failedOrders);
         } catch (error) {
             console.error(`❌ Error processing file ${fileName}: ${error.message}`);
+            failedOrders[fileName] = `File processing error: ${error.message}`;
+            await saveFailedOrdersTracker(failedOrders);
             await logDailyError(fileName, `File processing error: ${error.message}`);
         }
     }
 
     console.log("✅ Order processing completed.");
 }
-
 
 async function getProductFolderId(productName) {
     const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
