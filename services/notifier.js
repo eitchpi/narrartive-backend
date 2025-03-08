@@ -1,4 +1,5 @@
 import transporter from './emailClient.js';
+import { loadFailedOrdersTracker, saveFailedOrdersTracker } from './tracker.js';
 
 const failedOrdersToday = new Set();   // New tracker
 
@@ -10,8 +11,16 @@ function isSameDay(timestamp) {
 
 const dailyErrors = [];
 
-function logDailyError(message) {
-    dailyErrors.push(message);
+export async function logDailyError(orderNumber, errorMessage) {
+    const failedOrders = await loadFailedOrdersTracker();
+
+    // If order was already logged today, skip to prevent duplicate alerts
+    if (failedOrders[orderNumber]) return;
+
+    failedOrders[orderNumber] = errorMessage;
+    await saveFailedOrdersTracker(failedOrders);
+
+    console.log(`🚨 Logged failed order ${orderNumber} for daily summary.`);
 }
 
 // Send a daily summary email with all logged errors (called at midnight)
