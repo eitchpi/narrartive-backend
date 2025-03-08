@@ -3,11 +3,12 @@ import path from 'path';
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import csvParser from 'csv-parser';
-import { saveTracker } from './tracker.js';
 import { createZip, uploadFile, sendEmail, deleteLocalFiles } from './fileHandler.js';
 import { generatePassword, sendAdminAlert } from './utils.js';
 import { sendErrorNotification } from './notifier.js';
 import { recordError } from './errorTracker.js';
+import { loadTracker, saveTracker } from './tracker.js';
+
 
 dotenv.config();
 
