@@ -50,21 +50,32 @@ async function uploadFile(filePath) {
     return file.data.id;
 }
 
+import fetch from 'node-fetch';
+
 async function sendEmail(to, subject, link, password, name) {
     console.log(`📧 Attempting to send email to: ${to}`);
+
+    // Ensure environment variables are loaded
+    if (!process.env.BREVO_SMTP_KEY || !process.env.SENDER_EMAIL) {
+        console.error("❌ Missing Brevo SMTP Key or Sender Email in env variables.");
+        return;
+    }
 
     const emailData = {
         sender: { email: process.env.SENDER_EMAIL, name: "narrARTive" },
         to: [{ email: to, name: name }],
         subject: subject,
-        htmlContent: `<p>Hello ${name},</p><p>Your download link is ready: <a href="${link}">${link}</a></p><p>Password: <b>${password}</b></p>`
+        htmlContent: `<p>Hello ${name},</p>
+                      <p>Your download link is ready: <a href="${link}">${link}</a></p>
+                      <p>Password: <b>${password}</b></p>`
     };
 
     try {
         const response = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
             headers: {
-                'api-key': process.env.BREVO_SMTP_KEY,
+                'accept': 'application/json',
+                'api-key': process.env.BREVO_SMTP_KEY, // ✅ Using SMTP Key (No Changes to Other Files)
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(emailData)
@@ -76,13 +87,17 @@ async function sendEmail(to, subject, link, password, name) {
             console.log(`✅ 📧 Email sent successfully to ${to}:`, result);
         } else {
             console.error(`❌ Email sending failed for ${to}:`, result);
+
+            // Retry once if failed
+            if (response.status === 401) {
+                console.log("🔄 Retrying email send...");
+                return sendEmail(to, subject, link, password, name);
+            }
         }
     } catch (error) {
         console.error(`❌ Email sending error for ${to}:`, error);
     }
 }
-
-console.log("🔑 BREVO API KEY:", process.env.BREVO_SMTP_KEY ? "Loaded ✅" : "Not Found ❌");
 
 function deleteLocalFiles(files) {
     files.forEach(file => {
