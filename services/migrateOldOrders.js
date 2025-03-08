@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import dotenv from 'dotenv';
 import csvParser from 'csv-parser';
 import { sendAdminAlert } from './utils.js';
+import { loadTracker } from './tracker.js'; // ✅ Ensure we import loadTracker
 
 dotenv.config();
 
@@ -22,9 +23,14 @@ const drive = google.drive({ version: 'v3', auth });
 async function migrateOldOrders() {
     console.log('🔍 Starting migration scan for old Etsy order files...');
 
+    const tracker = await loadTracker(); // ✅ Ensure tracker is loaded
+    if (!tracker) {
+        console.error("❌ Tracker could not be loaded.");
+        return;
+    }
+
     const folderId = process.env.ETSY_ORDERS_FOLDER_ID;
     const processedFolderId = process.env.PROCESSED_ORDERS_FOLDER_ID;
-    const tracker = await loadTracker();
 
     const res = await drive.files.list({
         q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder'`,
@@ -45,8 +51,8 @@ async function migrateOldOrders() {
         const totalOrders = await countOrdersInFile(fileId);
 
         if (processedOrders.length === totalOrders) {
-            console.log(`✅ Migrated ${fileName} to Processed folder.`);
             await moveFileToProcessed(fileId, processedFolderId, folderId);
+            console.log(`✅ Migrated ${fileName} to Processed folder.`);
         } else {
             console.log(`⏳ Skipping ${fileName} — not fully processed.`);
         }
