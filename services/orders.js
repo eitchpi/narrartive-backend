@@ -64,7 +64,7 @@ async function loadLatestEtsyOrder() {
         ? await drive.files.export({ fileId: file.id, mimeType: 'text/csv' }, { responseType: 'stream' })
         : await drive.files.get({ fileId: file.id, alt: 'media' }, { responseType: 'stream' });
 
-    await parseCsvStream(fileStream.data, orders);
+    await parseCSV(fileStream.data, orders);
     return { fileId: file.id, fileName: file.name, orders };
 }
 
@@ -92,15 +92,14 @@ async function loadProductList() {
         throw new Error('❌ No Product_List file found in Documents folder');
     }
 
-    const productList = [];
     const fileStream = await drive.files.export({
         fileId: res.data.files[0].id,
         mimeType: 'text/csv'
     }, { responseType: 'stream' });
 
-    await parseCsvStream(fileStream.data, productList);
-    return productList;
+    return await parseCSV(fileStream.data);  // ✅ Replace parseCsvStream() with parseCSV()
 }
+
 
 async function processAllOrders() {
     console.log("🔄 Starting order processing...");
