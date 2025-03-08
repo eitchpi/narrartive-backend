@@ -19,10 +19,12 @@ const auth = new google.auth.JWT({
 
 const drive = google.drive({ version: 'v3', auth });
 
-async function migrateOldOrders(tracker) {
+async function migrateOldOrders() {
+    console.log('🔍 Starting migration scan for old Etsy order files...');
+
     const folderId = process.env.ETSY_ORDERS_FOLDER_ID;
     const processedFolderId = process.env.PROCESSED_ORDERS_FOLDER_ID;
-    console.log('🔍 Starting migration scan for old Etsy order files...');
+    const tracker = await loadTracker();
 
     const res = await drive.files.list({
         q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder'`,
@@ -43,8 +45,8 @@ async function migrateOldOrders(tracker) {
         const totalOrders = await countOrdersInFile(fileId);
 
         if (processedOrders.length === totalOrders) {
-            await moveFileToProcessed(fileId, processedFolderId, folderId);
             console.log(`✅ Migrated ${fileName} to Processed folder.`);
+            await moveFileToProcessed(fileId, processedFolderId, folderId);
         } else {
             console.log(`⏳ Skipping ${fileName} — not fully processed.`);
         }

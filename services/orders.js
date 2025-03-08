@@ -100,19 +100,25 @@ async function loadProductList() {
 }
 
 async function processAllOrders() {
+    console.log('🔄 Starting order processing...');
+
+    const tracker = await loadTracker(); // ✅ Loads processed orders list
     const latestOrderFile = await loadLatestEtsyOrder();
-    if (!latestOrderFile) return;
+    if (!latestOrderFile) {
+        console.log("📭 No new Etsy order files found.");
+        return;
+    }
 
     const { fileId, fileName, orders } = latestOrderFile;
-    const tracker = await loadTracker();
-    tracker[fileName] ??= [];
+    tracker[fileName] ??= [];  // Ensure tracking exists for this file
 
     const groupedOrders = orders.reduce((map, order) => {
-        const orderNumber = order['Order Number'].trim();
-        map[orderNumber] ??= [];
-        map[orderNumber].push(order);
+        map[order['Order Number']] ??= [];
+        map[order['Order Number']].push(order);
         return map;
     }, {});
+
+    let allOrdersProcessed = true; // ✅ Track if every order is completed
 
     for (const [orderNumber, orderItems] of Object.entries(groupedOrders)) {
         if (tracker[fileName].includes(orderNumber)) {
@@ -122,18 +128,23 @@ async function processAllOrders() {
 
         try {
             await processSingleOrder(orderNumber, orderItems);
-            tracker[fileName].push(orderNumber);
-            await saveTracker(tracker);
+            tracker[fileName].push(orderNumber); // ✅ Mark order as processed
+            await saveTracker(tracker); // ✅ Save updated tracker
         } catch (err) {
             console.error(`❌ Failed to process order ${orderNumber}:`, err);
-            await sendAdminAlert(`🚨 Order Processing Failed: ${orderNumber}`, `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`);
+            allOrdersProcessed = false; // ❌ Mark as incomplete
         }
     }
 
-    if (tracker[fileName].length === Object.keys(groupedOrders).length) {
+    // ✅ Only move the CSV if ALL orders in the file were processed
+    if (allOrdersProcessed && tracker[fileName].length === Object.keys(groupedOrders).length) {
+        console.log(`✅ All orders processed, moving ${fileName} to Processed folder.`);
         await moveFileToProcessed(fileId);
+    } else {
+        console.log(`⚠️ Some orders failed, keeping ${fileName} for retry.`);
     }
 }
+
 
 async function getProductFolderId(productName) {
     const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
