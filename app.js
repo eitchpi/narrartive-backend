@@ -7,7 +7,7 @@ import { migrateOldOrders } from './services/migrateOldOrders.js';
 import { loadTracker } from './services/tracker.js';
 import { getStatus } from './routes/status.js';
 import { resetDailyFailures } from './services/notifier.js';
-import { sendDailySummary } from './services/notifier.js';
+import { sendDailySummaryEmail } from './services/notifier.js';
 
 dotenv.config();
 
