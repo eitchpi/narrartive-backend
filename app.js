@@ -107,21 +107,30 @@ setInterval(async () => {
 }, 60 * 60 * 1000);
 
 // 🌅 Daily Reset (Midnight) + Send Summary Email
+/**
+ * 🌅 Schedule daily tasks at midnight:
+ * - Resets error notifications
+ * - Sends a daily summary email to the admin
+ */
 function scheduleDailyReset() {
     const now = new Date();
     const nextMidnight = new Date(now);
     nextMidnight.setDate(now.getDate() + 1);
     nextMidnight.setHours(0, 0, 0, 0);
 
-    setTimeout(async () => {
-        resetDailyFailures(); // ✅ Clears daily error flags
-        await sendDailySummary(); // ✅ Sends the summary email
-        scheduleDailyReset(); // ✅ Re-schedule for the next day
-    }, nextMidnight - now);
+    const msUntilMidnight = nextMidnight - now;
 
-    console.log('🕛 Scheduled daily reset & summary email.');
+    setTimeout(async () => {
+        console.log("🕛 Running daily reset & summary email...");
+        
+        resetDailyFailures();
+        await sendDailySummaryEmail(); // 🆕 Send summary email with failed orders
+        
+        scheduleDailyReset();  // Schedule the next day
+    }, msUntilMidnight);
+
+    console.log("🕛 Scheduled daily reset & summary email.");
 }
-scheduleDailyReset();
 
 app.listen(3000, async () => {
     console.log('✅ narrARTive Automation Service is running...');

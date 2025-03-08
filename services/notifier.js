@@ -15,16 +15,41 @@ function logDailyError(message) {
 }
 
 // Send a daily summary email with all logged errors (called at midnight)
-async function sendDailySummary() {
-    if (dailyErrors.length === 0) return;
+async function sendDailySummaryEmail() {
+    const failedOrdersTracker = await loadFailedOrdersTracker();
 
-    const errorReport = dailyErrors.join("\n");
-    await sendAdminAlert("📌 Daily Processing Summary", errorReport);
-    dailyErrors.length = 0; // Reset errors after sending
+    if (Object.keys(failedOrdersTracker).length === 0) {
+        console.log("📧 No failed orders to report in the daily summary.");
+        return;
+    }
+
+    let emailBody = `<h2>📊 Daily Order Processing Summary</h2>`;
+    emailBody += `<p>Here is the status of orders processed today:</p>`;
+
+    let hasErrors = false;
+
+    for (const [fileName, failedOrders] of Object.entries(failedOrdersTracker)) {
+        if (failedOrders.length > 0) {
+            hasErrors = true;
+            emailBody += `<h3>⚠️ Issues Found in <strong>${fileName}</strong></h3>`;
+            emailBody += `<ul>${failedOrders.map(order => `<li>❌ Order #${order} failed</li>`).join('')}</ul>`;
+            emailBody += `<p>📌 This file remains in the orders folder for manual review.</p>`;
+        }
+    }
+
+    if (!hasErrors) {
+        console.log("✅ No failed orders today. Skipping admin summary email.");
+        return;
+    }
+
+    // Send the summary email to the admin
+    await sendAdminAlert(
+        "🚨 Daily Summary: Orders with Issues",
+        emailBody
+    );
+
+    console.log("📧 Daily summary email sent to admin.");
 }
-
-export { logDailyError, sendDailySummary };
-
 
 export function resetDailyFailures() {
     failedOrdersToday.clear();  // Clear at midnight to allow fresh alerts
@@ -69,3 +94,5 @@ export async function sendErrorNotification(orderNumber, message) {
         console.error(`❌ Failed to send error notification for Order ${orderNumber}:`, err.message);
     }
 }
+
+export { logDailyError, sendDailySummary };

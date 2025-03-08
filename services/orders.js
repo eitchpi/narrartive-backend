@@ -99,8 +99,6 @@ async function loadProductList() {
 }
 
 async function processAllOrders() {
-    console.log("🔄 Starting order processing...");
-
     const latestOrderFile = await loadLatestEtsyOrder();
     if (!latestOrderFile) {
         console.log("📭 No new Etsy order file found.");
@@ -109,7 +107,14 @@ async function processAllOrders() {
 
     const { fileId, fileName, orders } = latestOrderFile;
     const tracker = await loadTracker();
+    const failedOrdersTracker = await loadFailedOrdersTracker();
+
     tracker[fileName] ??= [];
+    failedOrdersTracker[fileName] ??= [];
+
+    let hasErrors = false;
+
+    console.log("🔄 Starting order processing...");
 
     const groupedOrders = orders.reduce((map, order) => {
         map[order['Order Number']] ??= [];
@@ -117,39 +122,33 @@ async function processAllOrders() {
         return map;
     }, {});
 
-    let processedCount = 0;
-    let skippedCount = 0;
-
     for (const [orderNumber, orderItems] of Object.entries(groupedOrders)) {
         if (tracker[fileName].includes(orderNumber)) {
             console.log(`⏭️ Skipping already processed order: ${orderNumber}`);
-            logDailyError(`⏭️ Skipped duplicate order: ${orderNumber}`);
-            skippedCount++;
             continue;
         }
 
         try {
             await processSingleOrder(orderNumber, orderItems);
             tracker[fileName].push(orderNumber);
-            await saveTracker(tracker);
-            processedCount++;
         } catch (err) {
             console.error(`❌ Failed to process order ${orderNumber}:`, err);
-            logDailyError(`❌ Order Processing Failed: ${orderNumber} - ${err.message}`);
+            hasErrors = true;
+
+            if (!failedOrdersTracker[fileName].includes(orderNumber)) {
+                failedOrdersTracker[fileName].push(orderNumber);
+            }
         }
     }
 
-    console.log(`✅ Processing Complete: ${processedCount} orders processed, ${skippedCount} skipped.`);
+    await saveTracker(tracker);
+    await saveFailedOrdersTracker(failedOrdersTracker);
 
-    // 🛠️ Move CSV File to Processed Folder if ALL orders were handled
-    if (tracker[fileName].length === Object.keys(groupedOrders).length) {
-        if (!tracker[fileName].includes('MOVED_TO_PROCESSED')) {
-            await moveFileToProcessed(fileId);
-            tracker[fileName].push('MOVED_TO_PROCESSED'); // Prevent duplicate moves
-            await saveTracker(tracker);
-            console.log(`📂 Moved ${fileName} to Processed folder.`);
-            logDailyError(`📂 CSV file moved to Processed: ${fileName}`);
-        }
+    if (!hasErrors) {
+        console.log(`✅ All orders processed, moving ${fileName} to Processed folder.`);
+        await moveFileToProcessed(fileId);
+    } else {
+        console.warn(`⚠️ Some orders failed in ${fileName}, keeping file for admin review.`);
     }
 }
 
