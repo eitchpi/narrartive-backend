@@ -145,4 +145,4 @@ export async function saveFailedOrdersTracker(tracker) {
     }
 }
 
-export { loadTracker, saveTracker, saveFailedOrdersTracker };
+export { loadTracker, saveTracker };
