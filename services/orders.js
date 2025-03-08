@@ -304,14 +304,4 @@ async function downloadAllFilesInFolder(folderId, destFolder) {
     return downloadedFiles;
 }
 
-async function moveFileToProcessed(fileId) {
-    await drive.files.update({
-        fileId,
-        addParents: process.env.PROCESSED_ORDERS_FOLDER_ID,
-        removeParents: process.env.ETSY_ORDERS_FOLDER_ID,
-        fields: 'id, parents'
-    });
-    console.log(`✅ Moved file ${fileId} to Processed Orders.`);
-}
-
 export { processAllOrders };
