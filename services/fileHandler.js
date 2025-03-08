@@ -54,74 +54,41 @@ async function uploadFile(filePath) {
 async function sendEmail(to, subject, link, password, name) {
     console.log(`📧 Attempting to send email to...`);
 
-    // Ensure environment variables are loaded
     if (!process.env.BREVO_API_KEY || !process.env.SENDER_EMAIL) {
         console.error("❌ Missing Brevo API Key or Sender Email in env variables.");
         return;
     }
-
-    async function sendEmail(to, subject, link, password, name) {
-        console.log(`📧 Attempting to send email to...`);
-    
-        if (!process.env.BREVO_API_KEY || !process.env.SENDER_EMAIL) {
-            console.error("❌ Missing Brevo API Key or Sender Email in env variables.");
-            return;
-        }
-    
-        const emailData = {
-            sender: { email: process.env.SENDER_EMAIL, name: "narrARTive" },
-            to: [{ email: to, name: name }],
-            subject: subject,
-            htmlContent: `
-                <p>Hello ${name},</p>
-                <p>Your artwork is ready! 🎨</p>
-                <p><strong><a href="${link}" target="_blank" style="color: #4CAF50; font-size: 16px; text-decoration: none;">
-                    👉 Download Your Artwork
-                </a></strong></p>
-                <p><b>Password:</b> ${password}</p>
-                <p>Enjoy your purchase, and thank you for supporting narrARTive!</p>
-            `
-        };
-    
-        try {
-            const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-                method: 'POST',
-                headers: {
-                    'accept': 'application/json',
-                    'api-key': process.env.BREVO_API_KEY,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(emailData)
-            });
-    
-            const result = await response.json();
-    
-            if (response.ok) {
-                console.log(`✅ 📧 Email sent successfully to...`);
-            } else {
-                console.error(`❌ Email sending failed for...`, result);
-            }
-        } catch (error) {
-            console.error(`❌ Email sending error for...`, error);
-        }
-    }
-    
 
     try {
         const response = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
             headers: {
                 'accept': 'application/json',
-                'api-key': process.env.BREVO_API_KEY,  // ✅ Correct API Key
+                'api-key': process.env.BREVO_API_KEY,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(emailData)
+            body: JSON.stringify({
+                sender: { email: process.env.SENDER_EMAIL, name: "narrARTive" },
+                to: [{ email: to, name: name }],
+                subject: subject,
+                htmlContent: `
+                    <p>Hello ${name},</p>
+                    <p>Your artwork is ready! 🎨</p>
+                    <p><strong>
+                        <a href="${link}" target="_blank" style="color: #4CAF50; font-size: 16px; text-decoration: none;">
+                            👉 Download Your Artwork
+                        </a>
+                    </strong></p>
+                    <p><b>Password:</b> ${password}</p>
+                    <p>Enjoy your purchase, and thank you for supporting narrARTive!</p>
+                `
+            })
         });
 
         const result = await response.json();
 
         if (response.ok) {
-            console.log(`✅ 📧 Email sent successfully to...`, result);
+            console.log(`✅ 📧 Email sent successfully to... `);
         } else {
             console.error(`❌ Email sending failed for...`, result);
         }
@@ -129,6 +96,7 @@ async function sendEmail(to, subject, link, password, name) {
         console.error(`❌ Email sending error for...`, error);
     }
 }
+
 
 function deleteLocalFiles(files) {
     files.forEach(file => {
