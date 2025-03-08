@@ -53,7 +53,7 @@ async function uploadFile(filePath) {
 import fetch from 'node-fetch';
 
 async function sendEmail(to, subject, link, password, name) {
-    console.log(`📧 Attempting to send email to: ${to}`);
+    console.log(`📧 Attempting to send email to client...‚`);
 
     // Ensure environment variables are loaded
     const smtpKey = process.env.BREVO_SMTP_KEY;
