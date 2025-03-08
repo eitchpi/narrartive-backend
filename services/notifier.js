@@ -104,4 +104,4 @@ export async function sendErrorNotification(orderNumber, message) {
     }
 }
 
-export { logDailyError, sendDailySummaryEmail };
+export { sendDailySummaryEmail };
