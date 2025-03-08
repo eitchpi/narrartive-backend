@@ -52,7 +52,7 @@ async function uploadFile(filePath) {
 }
 
 async function sendEmail(to, subject, link, password, name) {
-    console.log(`📧 Attempting to send email to: ${to}`);
+    console.log(`📧 Attempting to send email to client`);
 
     if (!process.env.BREVO_API_KEY || !process.env.SENDER_EMAIL) {
         console.error("❌ Missing Brevo API Key or Sender Email in env variables.");
@@ -92,12 +92,12 @@ async function sendEmail(to, subject, link, password, name) {
         const result = await response.json();
 
         if (response.ok) {
-            console.log(`✅ 📧 Email sent successfully to ${to}`);
+            console.log(`✅ 📧 Email sent successfully to client!`);
         } else {
-            console.error(`❌ Email sending failed for ${to}:`, result);
+            console.error(`❌ Email sending failed for client`, result);
         }
     } catch (error) {
-        console.error(`❌ Email sending error for ${to}:`, error);
+        console.error(`❌ Email sending error for client`, error);
     }
 }
 
