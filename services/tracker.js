@@ -91,12 +91,13 @@ const FAILED_ORDERS_TRACKER = 'failed_orders.json'; // Google Drive file name
 /**
  * Loads the failed orders tracker from Google Drive.
  */
-export async function loadFailedOrdersTracker() {
+async function loadFailedOrdersTracker() {
     try {
         const trackerFileId = await findTrackerFileId(FAILED_ORDERS_TRACKER);
         if (!trackerFileId) {
-            console.warn("⚠️ No Failed Orders Tracker found — starting fresh.");
-            return {};
+            console.warn("⚠️ Failed Orders Tracker not found — creating a new one.");
+            await saveFailedOrdersTracker({});  // Create an empty tracker
+            return {};  // Return empty tracker
         }
 
         const res = await drive.files.get({
@@ -104,22 +105,24 @@ export async function loadFailedOrdersTracker() {
             alt: 'media'
         });
 
-        return JSON.parse(res.data); // Parse and return tracker data
+        return JSON.parse(res.data);
     } catch (err) {
-        console.error("❌ Failed to load Failed Orders Tracker:", err);
-        return {};
+        console.error("⚠️ Failed Orders Tracker is corrupted — resetting.", err);
+        await saveFailedOrdersTracker({});  // Reset the tracker
+        return {};  // Return empty tracker instead of throwing an error
     }
 }
 
 /**
  * Saves the failed orders tracker to Google Drive.
  */
-export async function saveFailedOrdersTracker(tracker) {
-    const trackerFileId = await findTrackerFileId(FAILED_ORDERS_TRACKER);
-    const content = JSON.stringify(tracker, null, 2);
-
+async function saveFailedOrdersTracker(tracker) {
     try {
+        const trackerFileId = await findTrackerFileId(FAILED_ORDERS_TRACKER);
+        const content = JSON.stringify(tracker, null, 2);
+
         if (trackerFileId) {
+            // Update existing tracker
             await drive.files.update({
                 fileId: trackerFileId,
                 media: {
@@ -128,6 +131,7 @@ export async function saveFailedOrdersTracker(tracker) {
                 }
             });
         } else {
+            // Create a new tracker if missing
             await drive.files.create({
                 resource: {
                     name: FAILED_ORDERS_TRACKER,
@@ -138,10 +142,11 @@ export async function saveFailedOrdersTracker(tracker) {
                     body: content
                 }
             });
+
+            console.log("🆕 Created new Failed Orders Tracker in Google Drive.");
         }
-        console.log("✅ Failed Orders Tracker saved to Google Drive.");
     } catch (err) {
-        console.error("❌ Failed to save Failed Orders Tracker to Google Drive:", err);
+        console.error("❌ Failed to save Failed Orders Tracker:", err);
     }
 }
 

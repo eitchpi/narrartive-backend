@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
-import csvParser from 'csv-parser';
+import { parse } from 'csv-parse';
 import { createZip, uploadFile, sendEmail, deleteLocalFiles } from './fileHandler.js';
 import { generatePassword, sendAdminAlert } from './utils.js';
 import { recordError } from './errorTracker.js';
@@ -99,7 +99,6 @@ async function loadProductList() {
 
     return await parseCSV(fileStream.data);  // ✅ Replace parseCsvStream() with parseCSV()
 }
-
 
 async function processAllOrders() {
     console.log("🔄 Starting order processing...");
