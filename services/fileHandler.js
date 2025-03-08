@@ -3,6 +3,8 @@ import path from 'path';
 import { exec } from 'child_process';
 import { google } from 'googleapis';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
+
 
 dotenv.config();
 
@@ -48,10 +50,6 @@ async function uploadFile(filePath) {
 
     return file.data.id;
 }
-
-import fetch from 'node-fetch';
-
-import fetch from 'node-fetch';
 
 async function sendEmail(to, subject, link, password, name) {
     console.log(`📧 Attempting to send email to: ${to}`);
