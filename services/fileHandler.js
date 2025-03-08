@@ -56,13 +56,16 @@ async function sendEmail(to, subject, link, password, name) {
     console.log(`📧 Attempting to send email to: ${to}`);
 
     // Ensure environment variables are loaded
-    if (!process.env.BREVO_SMTP_KEY || !process.env.SENDER_EMAIL) {
-        console.error("❌ Missing Brevo SMTP Key or Sender Email in env variables.");
+    const smtpKey = process.env.BREVO_SMTP_KEY;
+    const senderEmail = process.env.SENDER_EMAIL;
+
+    if (!smtpKey || !senderEmail) {
+        console.error("❌ Missing Brevo SMTP Key or Sender Email in environment variables.");
         return;
     }
 
     const emailData = {
-        sender: { email: process.env.SENDER_EMAIL, name: "narrARTive" },
+        sender: { email: senderEmail, name: "narrARTive" },
         to: [{ email: to, name: name }],
         subject: subject,
         htmlContent: `<p>Hello ${name},</p>
@@ -75,7 +78,7 @@ async function sendEmail(to, subject, link, password, name) {
             method: 'POST',
             headers: {
                 'accept': 'application/json',
-                'api-key': process.env.BREVO_SMTP_KEY, // ✅ Using SMTP Key (No Changes to Other Files)
+                'api-key': smtpKey,  // ✅ Using SMTP Key (No Changes to Other Files)
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(emailData)
@@ -88,9 +91,10 @@ async function sendEmail(to, subject, link, password, name) {
         } else {
             console.error(`❌ Email sending failed for ${to}:`, result);
 
-            // Retry once if failed
+            // Retry once if unauthorized error (401)
             if (response.status === 401) {
-                console.log("🔄 Retrying email send...");
+                console.log("🔄 Retrying email send after authentication failure...");
+                await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 sec before retry
                 return sendEmail(to, subject, link, password, name);
             }
         }
