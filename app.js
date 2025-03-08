@@ -7,6 +7,7 @@ import { migrateOldOrders } from './services/migrateOldOrders.js';
 import { loadTracker } from './services/tracker.js';
 import { getStatus } from './routes/status.js';
 import { resetDailyFailures } from './services/notifier.js';
+import { sendDailySummary } from './services/notifier.js';
 
 dotenv.config();
 
@@ -105,20 +106,22 @@ setInterval(async () => {
     }
 }, 60 * 60 * 1000);
 
-// 🌅 Daily Reset (Midnight)
+// 🌅 Daily Reset (Midnight) + Send Summary Email
 function scheduleDailyReset() {
     const now = new Date();
     const nextMidnight = new Date(now);
     nextMidnight.setDate(now.getDate() + 1);
     nextMidnight.setHours(0, 0, 0, 0);
 
-    setTimeout(() => {
-        resetDailyFailures();
-        scheduleDailyReset();
+    setTimeout(async () => {
+        resetDailyFailures(); // ✅ Clears daily error flags
+        await sendDailySummary(); // ✅ Sends the summary email
+        scheduleDailyReset(); // ✅ Re-schedule for the next day
     }, nextMidnight - now);
 
-    console.log('🕛 Scheduled daily error notification reset.');
+    console.log('🕛 Scheduled daily reset & summary email.');
 }
+scheduleDailyReset();
 
 app.listen(3000, async () => {
     console.log('✅ narrARTive Automation Service is running...');

@@ -109,4 +109,28 @@ function deleteLocalFiles(files) {
     });
 }
 
-export { createZip, uploadFile, sendEmail, deleteLocalFiles };
+async function moveFileToProcessed(fileId) {
+    const processedFolderId = process.env.PROCESSED_ORDERS_FOLDER_ID;
+    
+    if (!processedFolderId) {
+        console.error("❌ Missing 'Processed Orders' folder ID.");
+        return;
+    }
+
+    try {
+        await drive.files.update({
+            fileId,
+            addParents: processedFolderId,
+            removeParents: process.env.ETSY_ORDERS_FOLDER_ID,
+            fields: "id, parents",
+        });
+
+        console.log(`✅ Moved file ${fileId} to Processed Orders.`);
+    } catch (err) {
+        console.error(`❌ Failed to move file ${fileId} to Processed Orders:`, err);
+        logDailyError(`❌ Failed to move file ${fileId}: ${err.message}`);
+    }
+}
+
+
+export { createZip, uploadFile, sendEmail, deleteLocalFiles, moveFileToProcessed };

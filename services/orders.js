@@ -5,10 +5,9 @@ import dotenv from 'dotenv';
 import csvParser from 'csv-parser';
 import { createZip, uploadFile, sendEmail, deleteLocalFiles } from './fileHandler.js';
 import { generatePassword, sendAdminAlert } from './utils.js';
-import { sendErrorNotification } from './notifier.js';
 import { recordError } from './errorTracker.js';
 import { loadTracker, saveTracker } from './tracker.js';
-
+import { moveFileToProcessed } from './fileHandler.js';
 
 dotenv.config();
 
@@ -100,17 +99,17 @@ async function loadProductList() {
 }
 
 async function processAllOrders() {
-    console.log('🔄 Starting order processing...');
+    console.log("🔄 Starting order processing...");
 
-    const tracker = await loadTracker(); // ✅ Loads processed orders list
     const latestOrderFile = await loadLatestEtsyOrder();
     if (!latestOrderFile) {
-        console.log("📭 No new Etsy order files found.");
+        console.log("📭 No new Etsy order file found.");
         return;
     }
 
     const { fileId, fileName, orders } = latestOrderFile;
-    tracker[fileName] ??= [];  // Ensure tracking exists for this file
+    const tracker = await loadTracker();
+    tracker[fileName] ??= [];
 
     const groupedOrders = orders.reduce((map, order) => {
         map[order['Order Number']] ??= [];
@@ -118,33 +117,41 @@ async function processAllOrders() {
         return map;
     }, {});
 
-    let allOrdersProcessed = true; // ✅ Track if every order is completed
+    let processedCount = 0;
+    let skippedCount = 0;
 
     for (const [orderNumber, orderItems] of Object.entries(groupedOrders)) {
         if (tracker[fileName].includes(orderNumber)) {
             console.log(`⏭️ Skipping already processed order: ${orderNumber}`);
+            logDailyError(`⏭️ Skipped duplicate order: ${orderNumber}`);
+            skippedCount++;
             continue;
         }
 
         try {
             await processSingleOrder(orderNumber, orderItems);
-            tracker[fileName].push(orderNumber); // ✅ Mark order as processed
-            await saveTracker(tracker); // ✅ Save updated tracker
+            tracker[fileName].push(orderNumber);
+            await saveTracker(tracker);
+            processedCount++;
         } catch (err) {
             console.error(`❌ Failed to process order ${orderNumber}:`, err);
-            allOrdersProcessed = false; // ❌ Mark as incomplete
+            logDailyError(`❌ Order Processing Failed: ${orderNumber} - ${err.message}`);
         }
     }
 
-    // ✅ Only move the CSV if ALL orders in the file were processed
-    if (allOrdersProcessed && tracker[fileName].length === Object.keys(groupedOrders).length) {
-        console.log(`✅ All orders processed, moving ${fileName} to Processed folder.`);
-        await moveFileToProcessed(fileId);
-    } else {
-        console.log(`⚠️ Some orders failed, keeping ${fileName} for retry.`);
+    console.log(`✅ Processing Complete: ${processedCount} orders processed, ${skippedCount} skipped.`);
+
+    // 🛠️ Move CSV File to Processed Folder if ALL orders were handled
+    if (tracker[fileName].length === Object.keys(groupedOrders).length) {
+        if (!tracker[fileName].includes('MOVED_TO_PROCESSED')) {
+            await moveFileToProcessed(fileId);
+            tracker[fileName].push('MOVED_TO_PROCESSED'); // Prevent duplicate moves
+            await saveTracker(tracker);
+            console.log(`📂 Moved ${fileName} to Processed folder.`);
+            logDailyError(`📂 CSV file moved to Processed: ${fileName}`);
+        }
     }
 }
-
 
 async function getProductFolderId(productName) {
     const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;

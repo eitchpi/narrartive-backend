@@ -8,6 +8,24 @@ function isSameDay(timestamp) {
     return now.toDateString() === date.toDateString();
 }
 
+const dailyErrors = [];
+
+function logDailyError(message) {
+    dailyErrors.push(message);
+}
+
+// Send a daily summary email with all logged errors (called at midnight)
+async function sendDailySummary() {
+    if (dailyErrors.length === 0) return;
+
+    const errorReport = dailyErrors.join("\n");
+    await sendAdminAlert("📌 Daily Processing Summary", errorReport);
+    dailyErrors.length = 0; // Reset errors after sending
+}
+
+export { logDailyError, sendDailySummary };
+
+
 export function resetDailyFailures() {
     failedOrdersToday.clear();  // Clear at midnight to allow fresh alerts
 }
