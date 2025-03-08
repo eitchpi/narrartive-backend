@@ -101,58 +101,78 @@ async function loadProductList() {
 }
 
 async function processAllOrders() {
-    const latestOrderFile = await loadLatestEtsyOrder();
-    if (!latestOrderFile) {
+    console.log("🔄 Starting order processing...");
+
+    const tracker = await loadTracker();
+    const failedOrders = await loadFailedOrdersTracker();
+
+    const folderId = process.env.ETSY_ORDERS_FOLDER_ID;
+    const res = await drive.files.list({
+        q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder'`,
+        fields: 'files(id, name)',
+    });
+
+    const files = res.data.files || [];
+
+    if (files.length === 0) {
         console.log("📭 No new Etsy order file found.");
         return;
     }
 
-    const { fileId, fileName, orders } = latestOrderFile;
-    const tracker = await loadTracker();
-    const failedOrdersTracker = await loadFailedOrdersTracker();
+    for (const file of files) {
+        const fileId = file.id;
+        const fileName = file.name;
 
-    tracker[fileName] ??= [];
-    failedOrdersTracker[fileName] ??= [];
+        console.log(`🔍 Processing file: ${fileName}`);
 
-    let hasErrors = false;
-
-    console.log("🔄 Starting order processing...");
-
-    const groupedOrders = orders.reduce((map, order) => {
-        map[order['Order Number']] ??= [];
-        map[order['Order Number']].push(order);
-        return map;
-    }, {});
-
-    for (const [orderNumber, orderItems] of Object.entries(groupedOrders)) {
-        if (tracker[fileName].includes(orderNumber)) {
-            console.log(`⏭️ Skipping already processed order: ${orderNumber}`);
+        if (tracker[fileName]) {
+            console.log(`⏭️ Skipping already processed file: ${fileName}`);
             continue;
         }
 
         try {
-            await processSingleOrder(orderNumber, orderItems);
-            tracker[fileName].push(orderNumber);
-        } catch (err) {
-            console.error(`❌ Failed to process order ${orderNumber}:`, err);
-            hasErrors = true;
+            const fileStream = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'stream' });
 
-            if (!failedOrdersTracker[fileName].includes(orderNumber)) {
-                failedOrdersTracker[fileName].push(orderNumber);
+            const orders = await parseCSV(fileStream.data);
+            const processedOrders = [];
+            const failedOrdersInFile = [];
+
+            for (const order of orders) {
+                const orderNumber = order['Order ID'];
+
+                if (tracker[orderNumber]) {
+                    console.log(`⏭️ Skipping already processed order: ${orderNumber}`);
+                    continue;
+                }
+
+                try {
+                    await processSingleOrder(orderNumber, order);
+                    processedOrders.push(orderNumber);
+                } catch (error) {
+                    console.error(`❌ Failed to process order ${orderNumber}: ${error.message}`);
+                    failedOrdersInFile.push(orderNumber);
+                    await logDailyError(orderNumber, error.message);
+                }
             }
+
+            if (failedOrdersInFile.length === 0) {
+                console.log(`✅ All orders processed successfully, moving file: ${fileName}`);
+                await moveFileToProcessed(fileId);
+            } else {
+                console.log(`⚠️ Some orders failed in ${fileName}, keeping file for review.`);
+            }
+
+            tracker[fileName] = true;
+            await saveTracker(tracker);
+        } catch (error) {
+            console.error(`❌ Error processing file ${fileName}: ${error.message}`);
+            await logDailyError(fileName, `File processing error: ${error.message}`);
         }
     }
 
-    await saveTracker(tracker);
-    await saveFailedOrdersTracker(failedOrdersTracker);
-
-    if (!hasErrors) {
-        console.log(`✅ All orders processed, moving ${fileName} to Processed folder.`);
-        await moveFileToProcessed(fileId);
-    } else {
-        console.warn(`⚠️ Some orders failed in ${fileName}, keeping file for admin review.`);
-    }
+    console.log("✅ Order processing completed.");
 }
+
 
 async function getProductFolderId(productName) {
     const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;

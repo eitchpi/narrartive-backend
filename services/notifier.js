@@ -29,9 +29,17 @@ async function sendDailySummaryEmail() {
 
     if (Object.keys(failedOrdersTracker).length === 0) {
         console.log("📧 No failed orders to report in the daily summary.");
+    
+        // But if there was a reset earlier, notify admin in the summary
+        if (fs.existsSync('./failed_orders.json')) {
+            let emailBody = `<h2>⚠️ Failed Orders Tracker was Reset</h2>`;
+            emailBody += `<p>The failed orders tracker was corrupted and automatically reset. Some failure records may be missing.</p>`;
+    
+            await sendAdminAlert("⚠️ Daily Summary: Failed Orders Tracker Reset", emailBody);
+        }
         return;
     }
-
+        
     let emailBody = `<h2>📊 Daily Order Processing Summary</h2>`;
     emailBody += `<p>Here is the status of orders processed today:</p>`;
 

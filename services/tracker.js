@@ -91,19 +91,21 @@ const FAILED_ORDERS_TRACKER = 'failed_orders_tracker.json';
 /**
  * Loads the failed orders tracker from Google Drive.
  */
-async function loadFailedOrdersTracker() {
-    const trackerFileId = await findTrackerFileId(FAILED_ORDERS_TRACKER);
-    if (!trackerFileId) {
-        console.log('📭 No failed orders tracker found — starting fresh.');
-        return {};
-    }
-
-    const res = await drive.files.get({ fileId: trackerFileId, alt: 'media' });
-
+export async function loadFailedOrdersTracker() {
     try {
-        return JSON.parse(res.data);
-    } catch (err) {
-        console.error('⚠️ Failed Orders Tracker is corrupted — resetting.', err);
+        const content = await fs.promises.readFile('./failed_orders.json', 'utf8');
+        return JSON.parse(content);
+    } catch (error) {
+        console.error(`⚠️ Failed Orders Tracker is corrupted — resetting.`, error);
+
+        // Notify admin via email
+        await sendAdminAlert(
+            "🚨 Failed Orders Tracker Reset",
+            `The failed orders tracker was corrupted and has been reset. Previous failed order data may be lost.<br>Error: ${error.message}`
+        );
+
+        // Reset the tracker and return empty
+        await saveFailedOrdersTracker({});
         return {};
     }
 }
@@ -137,4 +139,4 @@ async function saveFailedOrdersTracker(tracker) {
     }
 }
 
-export { loadTracker, saveTracker, loadFailedOrdersTracker, saveFailedOrdersTracker };
+export { loadTracker, saveTracker, saveFailedOrdersTracker };
