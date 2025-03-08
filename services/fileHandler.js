@@ -52,7 +52,7 @@ async function uploadFile(filePath) {
 }
 
 async function sendEmail(to, subject, link, password, name) {
-    console.log(`📧 Attempting to send email to...`);
+    console.log(`📧 Attempting to send email to: ${to}`);
 
     if (!process.env.BREVO_API_KEY || !process.env.SENDER_EMAIL) {
         console.error("❌ Missing Brevo API Key or Sender Email in env variables.");
@@ -72,15 +72,19 @@ async function sendEmail(to, subject, link, password, name) {
                 to: [{ email: to, name: name }],
                 subject: subject,
                 htmlContent: `
-                    <p>Hello ${name},</p>
-                    <p>Your artwork is ready! 🎨</p>
-                    <p><strong>
-                        <a href="${link}" target="_blank" style="color: #4CAF50; font-size: 16px; text-decoration: none;">
-                            👉 Download Your Artwork
-                        </a>
-                    </strong></p>
-                    <p><b>Password:</b> ${password}</p>
-                    <p>Enjoy your purchase, and thank you for supporting narrARTive!</p>
+                    <p><strong>Hi ${name}, Your Artwork is Ready! 🎨</strong></p>
+
+                    <p><strong>Download Link:</strong> 
+                        <a href="${link}" target="_blank" style="color: #007BFF;">Click Here</a>
+                    </p>
+
+                    <p><strong>Password:</strong> ${password}</p>
+
+                    <p>⚠️ <strong>Please download your files within 24 hours</strong> — the link will expire after that.</p>
+
+                    <p><em>This email was automatically generated. If you have any questions, contact us at 
+                        <a href="mailto:info@narrartive.de">info@narrartive.de</a>.</em>
+                    </p>
                 `
             })
         });
@@ -88,15 +92,14 @@ async function sendEmail(to, subject, link, password, name) {
         const result = await response.json();
 
         if (response.ok) {
-            console.log(`✅ 📧 Email sent successfully to... `);
+            console.log(`✅ 📧 Email sent successfully to ${to}`);
         } else {
-            console.error(`❌ Email sending failed for...`, result);
+            console.error(`❌ Email sending failed for ${to}:`, result);
         }
     } catch (error) {
-        console.error(`❌ Email sending error for...`, error);
+        console.error(`❌ Email sending error for ${to}:`, error);
     }
 }
-
 
 function deleteLocalFiles(files) {
     files.forEach(file => {
