@@ -52,7 +52,7 @@ async function uploadFile(filePath) {
 }
 
 async function sendEmail(to, subject, link, password, name) {
-    console.log(`📧 Attempting to send email to: ${to}`);
+    console.log(`📧 Attempting to send email to:...`);
 
     // Ensure environment variables are loaded
     if (!process.env.BREVO_API_KEY || !process.env.SENDER_EMAIL) {
