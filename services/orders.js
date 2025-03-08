@@ -98,25 +98,25 @@ async function loadProductList() {
     return productList;
 }
 
-async function processAllOrders(tracker) {
+async function processAllOrders() {
     const latestOrderFile = await loadLatestEtsyOrder();
-    if (!latestOrderFile) {
-        console.log('📭 No new Etsy orders found.');
-        return;
-    }
+    if (!latestOrderFile) return;
 
     const { fileId, fileName, orders } = latestOrderFile;
-    tracker[fileName] ??= [];  // Initialize tracking entry if missing
+    const tracker = await loadTracker();
+    tracker[fileName] ??= [];
 
     const groupedOrders = orders.reduce((map, order) => {
-        map[order['Order Number']] ??= [];
-        map[order['Order Number']].push(order);
+        const orderNumber = order['Order Number'].trim();
+        map[orderNumber] ??= [];
+        map[orderNumber].push(order);
         return map;
     }, {});
 
     for (const [orderNumber, orderItems] of Object.entries(groupedOrders)) {
         if (tracker[fileName].includes(orderNumber)) {
-            continue;  // Skip already processed orders
+            console.log(`⏭️ Skipping already processed order: ${orderNumber}`);
+            continue;
         }
 
         try {
@@ -125,22 +125,10 @@ async function processAllOrders(tracker) {
             await saveTracker(tracker);
         } catch (err) {
             console.error(`❌ Failed to process order ${orderNumber}:`, err);
-
-            recordError(`Failed to process order ${orderNumber}: ${err.message}`);
-
-            await sendAdminAlert(
-                `🚨 Order Processing Failed: ${orderNumber}`,
-                `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`
-            );
-
-            await sendErrorNotification(
-                orderNumber,
-                `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`
-            );
+            await sendAdminAlert(`🚨 Order Processing Failed: ${orderNumber}`, `File: ${fileName}\nError: ${err.message}\nStack: ${err.stack}`);
         }
     }
 
-    // If every order in this file is processed, move it to "Processed Orders"
     if (tracker[fileName].length === Object.keys(groupedOrders).length) {
         await moveFileToProcessed(fileId);
     }
@@ -166,48 +154,36 @@ async function getProductFolderId(productName) {
     return null; // Return null if the product folder is not found
 }
 
-
 async function processSingleOrder(orderNumber, orderItems) {
+    console.log(`🔍 Processing order: ${orderNumber}`);
+
     const tempFolder = `./temp_${orderNumber}`;
-    if (fs.existsSync(tempFolder)) {
-        fs.rmSync(tempFolder, { recursive: true, force: true });
-    }
+    if (fs.existsSync(tempFolder)) fs.rmSync(tempFolder, { recursive: true, force: true });
     fs.mkdirSync(tempFolder, { recursive: true });
 
-    const products = await loadProductList();
-    const thankYouFolderId = await getSubfolderId(process.env.NARRARTIVE_FOLDER_ID, 'Thank You Card');
-
+    const productFolders = await listSubfolders(process.env.NARRARTIVE_FOLDER_ID);
     for (const order of orderItems) {
-        const rawProductName = order['Product Name'].trim();
-        const productName = extractProductName(rawProductName);
-
+        const productName = extractProductName(order['Product Name'].trim());
         console.log(`🔍 Looking for product folder: "${productName}"`);
 
-        const productFolderId = await getProductFolderId(productName);
-        if (!productFolderId) {
+        const productFolder = productFolders.find(p => p.name === productName);
+        if (!productFolder) {
             console.error(`❌ Product folder not found: "${productName}"`);
-            throw new Error(`Product folder not found: "${productName}" (Check Google Drive folders)`);
+            throw new Error(`Product folder missing: "${productName}"`);
         }
 
-        // Find the correct format folder (A2 or 40x40)
-        const formatFolderId = await findFormatFolder(productFolderId);
-        if (!formatFolderId) {
+        const formatFolder = await findFormatFolder(productFolder.id);
+        if (!formatFolder) {
             console.error(`❌ Format folder (A2 or 40x40) not found for: ${productName}`);
             throw new Error(`Format folder missing: "${productName}" (A2 or 40x40 required)`);
         }
 
-        console.log(`📂 Found format folder for "${productName}": ${formatFolderId}`);
-
-        await downloadAllFilesInFolder(formatFolderId, tempFolder);
+        await downloadAllFilesInFolder(formatFolder, tempFolder);
     }
 
-    // Add Thank You Card
-    const thankYouFiles = await downloadAllFilesInFolder(thankYouFolderId, tempFolder);
-    if (thankYouFiles.length === 0) {
-        throw new Error('❌ Thank You Card folder is empty or files failed to download — cannot proceed');
-    }
+    const thankYouFolderId = await getSubfolderId(process.env.NARRARTIVE_FOLDER_ID, 'Thank You Card');
+    await downloadAllFilesInFolder(thankYouFolderId, tempFolder);
 
-    // Zip and upload the package
     const zipPath = `./Order_${orderNumber}.zip`;
     const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
     const password = generatePassword(orderItems[0]);
@@ -224,11 +200,10 @@ async function processSingleOrder(orderNumber, orderItems) {
         orderItems[0]['Buyer Name']
     );
 
-    console.log(`✅ Order ${orderNumber} processed successfully.`);
-    
-    // Cleanup
     deleteLocalFiles([...filesToZip, zipPath]);
     fs.rmSync(tempFolder, { recursive: true, force: true });
+
+    console.log(`✅ Order ${orderNumber} processed successfully.`);
 }
 
 async function findFormatFolder(productFolderId) {
