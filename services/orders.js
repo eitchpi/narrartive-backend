@@ -8,6 +8,7 @@ import { generatePassword, sendAdminAlert } from './utils.js';
 import { recordError } from './errorTracker.js';
 import { loadTracker, saveTracker } from './tracker.js';
 import { moveFileToProcessed } from './fileHandler.js';
+import { logDailyError } from './notifier.js';
 
 dotenv.config();
 
