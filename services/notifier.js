@@ -95,4 +95,4 @@ export async function sendErrorNotification(orderNumber, message) {
     }
 }
 
-export { logDailyError, sendDailySummary };
+export { logDailyError, sendDailySummaryEmail };
