@@ -53,11 +53,37 @@ export async function readJsonFromDrive(fileId) {
     }
 
     try {
-        // First get the file metadata to check its type
+        // First check if this is a folder
         const metadata = await drive.files.get({
             fileId,
-            fields: 'mimeType'
+            fields: 'mimeType,name'
         });
+
+        // If it's a folder, look for the tracker file inside it
+        if (metadata.data.mimeType === 'application/vnd.google-apps.folder') {
+            console.log(`📂 Looking for tracker file in folder: ${metadata.data.name}`);
+            const files = await drive.files.list({
+                q: `'${fileId}' in parents and (name = 'processed_tracker.json' or name = 'failed_orders.json') and trashed = false`,
+                fields: 'files(id, name, mimeType)'
+            });
+
+            if (files.data.files.length === 0) {
+                console.log("📝 No tracker file found in folder");
+                return {};
+            }
+
+            // Use the first matching file
+            const trackerFile = files.data.files[0];
+            console.log(`📄 Found tracker file: ${trackerFile.name}`);
+            fileId = trackerFile.id;
+            
+            // Get the new file's metadata
+            const newMetadata = await drive.files.get({
+                fileId: trackerFile.id,
+                fields: 'mimeType'
+            });
+            metadata.data.mimeType = newMetadata.data.mimeType;
+        }
 
         let content;
         if (metadata.data.mimeType === 'application/vnd.google-apps.document') {
@@ -112,12 +138,12 @@ export async function loadTracker() {
 
         // Try to read from local file first
         let data = readJsonFromFile(TRACKER_FILE);
-        if (data) {
+        if (data && Object.keys(data).length > 0) {
             console.log("✅ Loaded tracker from local file");
             return convertToNewFormat(data);
         }
 
-        // If not found locally, try Google Drive with better error handling
+        // If not found locally or empty, try Google Drive with better error handling
         try {
             console.log("🔄 Attempting to load tracker from Google Drive...");
             data = await readJsonFromDrive(process.env.TRACKER_FOLDER_ID);
