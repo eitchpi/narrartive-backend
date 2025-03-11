@@ -7,3 +7,6 @@ node_modules/
 *.log
 data/
 failed_orders.json
+.yarn/
+.pnp.*
+package-lock.json
