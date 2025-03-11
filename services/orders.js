@@ -177,13 +177,16 @@ async function processAllOrders() {
             try {
                 // Check if file has already been processed
                 const tracker = await loadTracker();
+                if (!tracker.processedOrders) {
+                    tracker.processedOrders = {};
+                }
+                
                 const baseFileName = fileName.replace(/_fix\d*\.csv$/, '.csv');
                 const isFixAttempt = fileName.includes('_fix');
                 
                 if (!isFixAttempt && tracker.processedOrders[baseFileName]) {
                     console.log(`⚠️ File ${baseFileName} has already been processed. Use _fix suffix to reprocess.`);
-                    await trackSkippedFile(fileName, baseFileName);
-                    // Remove immediate summary trigger since it's handled by daily reset
+                    await trackSkippedFile(baseFileName, tracker.processedOrders[baseFileName][0] || 'Unknown');
                     continue;
                 }
 

@@ -31,14 +31,27 @@ const EMAIL_PORT = process.env.SMTP_PORT;
 // ✅ Google Drive Authentication
 const auth = new google.auth.JWT({
     email: process.env.GOOGLE_CLIENT_EMAIL,
-    key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    key: process.env.GOOGLE_PRIVATE_KEY ? 
+        process.env.GOOGLE_PRIVATE_KEY.split(String.raw`\n`).join('\n') : 
+        undefined,
     scopes: ["https://www.googleapis.com/auth/drive"],
 });
+
+// Verify auth configuration
+if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+    console.error("⚠️ Missing Google Drive credentials in environment variables");
+}
+
 const drive = google.drive({ version: "v3", auth });
 
 const FAILED_ORDERS_TRACKER_ID = process.env.FAILED_ORDERS_TRACKER;
 
 export async function readJsonFromDrive(fileId) {
+    if (!fileId) {
+        console.error("❌ No file ID provided for Google Drive operation");
+        return {};
+    }
+
     try {
         // First get the file metadata to check its type
         const metadata = await drive.files.get({
@@ -54,23 +67,32 @@ export async function readJsonFromDrive(fileId) {
                 mimeType: 'text/plain'
             });
             content = response.data;
-        } else {
-            // For regular files, download directly
+        } else if (metadata.data.mimeType === 'application/json' || metadata.data.mimeType === 'text/plain') {
+            // For JSON or text files, download directly
             const response = await drive.files.get({
                 fileId,
                 alt: 'media'
             });
             content = response.data;
+        } else {
+            console.error(`❌ Unsupported file type: ${metadata.data.mimeType}`);
+            return {};
         }
 
         // Handle both string and object responses
         if (typeof content === 'string') {
-            return JSON.parse(content);
+            try {
+                return JSON.parse(content);
+            } catch (e) {
+                console.error('❌ Failed to parse JSON content:', e.message);
+                return {};
+            }
         } else if (typeof content === 'object') {
             return content;
         }
 
-        throw new Error('Invalid JSON data format from Google Drive.');
+        console.error('❌ Invalid JSON data format from Google Drive');
+        return {};
     } catch (error) {
         console.error(`❌ Failed to read JSON from Google Drive: ${error.message}`);
         return {}; // Return an empty object to prevent crashes
@@ -82,22 +104,36 @@ export async function readJsonFromDrive(fileId) {
  * =============================== */
 export async function loadTracker() {
     try {
+        // Ensure data directory exists
+        if (!fs.existsSync("./data")) {
+            fs.mkdirSync("./data", { recursive: true });
+            console.log("📁 Created directory: ./data");
+        }
+
         // Try to read from local file first
         let data = readJsonFromFile(TRACKER_FILE);
         if (data) {
+            console.log("✅ Loaded tracker from local file");
             return convertToNewFormat(data);
         }
 
-        // If not found locally, try Google Drive
-        data = await readJsonFromDrive(process.env.TRACKER_FOLDER_ID);
-        if (data) {
-            writeJsonToFile(TRACKER_FILE, data);
-            return convertToNewFormat(data);
+        // If not found locally, try Google Drive with better error handling
+        try {
+            console.log("🔄 Attempting to load tracker from Google Drive...");
+            data = await readJsonFromDrive(process.env.TRACKER_FOLDER_ID);
+            if (data && Object.keys(data).length > 0) {
+                console.log("✅ Loaded tracker from Google Drive");
+                writeJsonToFile(TRACKER_FILE, data);
+                return convertToNewFormat(data);
+            }
+        } catch (driveError) {
+            console.error("⚠️ Failed to load from Google Drive:", driveError.message);
         }
 
-        // If no tracker exists, create a new one
+        // If no tracker exists or failed to load, create a new one
+        console.log("📝 Creating new tracker...");
         const emptyTracker = {
-            processedOrders: {}  // New format: { "filename.csv": ["order1", "order2"] }
+            processedOrders: {}
         };
         writeJsonToFile(TRACKER_FILE, emptyTracker);
         return emptyTracker;
@@ -144,26 +180,40 @@ export async function saveTracker(tracker) {
  * =============================== */
 export async function loadFailedOrdersTracker() {
     try {
+        // Ensure data directory exists
+        if (!fs.existsSync("./data")) {
+            fs.mkdirSync("./data", { recursive: true });
+            console.log("📁 Created directory: ./data");
+        }
+
         // Try to read from local file first
         let data = readJsonFromFile(FAILED_ORDERS_FILE);
         if (data) {
+            console.log("✅ Loaded failed orders tracker from local file");
             return data;
         }
 
-        // If not found locally, try Google Drive
-        data = await readJsonFromDrive(process.env.FAILED_ORDERS_TRACKER);
-        if (data) {
-            writeJsonToFile(FAILED_ORDERS_FILE, data);
-            return data;
+        // If not found locally, try Google Drive with better error handling
+        try {
+            console.log("🔄 Attempting to load failed orders tracker from Google Drive...");
+            data = await readJsonFromDrive(process.env.FAILED_ORDERS_TRACKER);
+            if (data && Object.keys(data).length > 0) {
+                console.log("✅ Loaded failed orders tracker from Google Drive");
+                writeJsonToFile(FAILED_ORDERS_FILE, data);
+                return data;
+            }
+        } catch (driveError) {
+            console.error("⚠️ Failed to load from Google Drive:", driveError.message);
         }
 
-        // If no tracker exists, create a new one
-        const emptyTracker = {};
+        // If no tracker exists or failed to load, create a new one
+        console.log("📝 Creating new failed orders tracker...");
+        const emptyTracker = { skippedFiles: {} };
         writeJsonToFile(FAILED_ORDERS_FILE, emptyTracker);
         return emptyTracker;
     } catch (error) {
         console.error("❌ Failed to load failed orders tracker:", error);
-        return {};
+        return { skippedFiles: {} };
     }
 }
 
