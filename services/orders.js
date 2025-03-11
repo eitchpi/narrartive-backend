@@ -259,13 +259,13 @@ async function processAllOrders() {
                         <p>Dear ${orderGroup.buyerName},</p>
                         <p>Thank you for purchasing from narrARTive. Your files are ready for download:</p>
                         
-                        <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin: 20px 0;">
-                            <h2>📥 Download Your Files</h2>
-                            <p><a href="https://drive.google.com/file/d/${zipFileId}/view?usp=sharing" style="display: inline-block; background-color: #4285f4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin: 10px 0;">Download ZIP File</a></p>
+                        <div style="background-color: #f9f9f9; padding: 32px; border-radius: 5px; margin: 32px 0;">
+                            <h2>⇩ Download Your Files</h2>
+                            <p><a href="https://drive.google.com/file/d/${zipFileId}/view?usp=sharing" style="display: inline-block; background-color: #1AC300; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; margin: 12px 0;">Download ZIP File</a></p>
                             
-                            <p style="margin-top: 15px;"><strong>Password:</strong> ${zipPassword}</p>
+                            <p style="margin-top: 16px;"><strong>Password:</strong> ${zipPassword}</p>
                             
-                            <p style="color: #e65100; margin-top: 15px;">
+                            <p style="margin-top: 16px;">
                                 ⚠️ Important: This download link will expire in 24 hours
                             </p>
                         </div>

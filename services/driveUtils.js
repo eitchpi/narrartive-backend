@@ -39,7 +39,7 @@ export async function findProductFolder(productName) {
 }
 
 export async function findSizeFolder(productFolderId) {
-    const sizeFolders = ["20x20", "A4"];
+    const sizeFolders = ["40x40", "A2"];
     
     for (const size of sizeFolders) {
         const folderId = await getSubfolderId(productFolderId, size);
