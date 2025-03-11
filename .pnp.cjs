@@ -29,7 +29,8 @@ const RAW_RUNTIME_STATE =
         "packageDependencies": [\
           ["7zip-bin", "npm:5.2.0"],\
           ["archiver", "npm:5.3.2"],\
-          ["axios", "npm:1.8.1"],\
+          ["axios", "npm:1.8.2"],\
+          ["csv-parse", "npm:5.6.0"],\
           ["csv-parser", "npm:3.2.0"],\
           ["dotenv", "npm:16.4.7"],\
           ["express", "npm:4.21.2"],\
@@ -161,11 +162,11 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["axios", [\
-      ["npm:1.8.1", {\
-        "packageLocation": "../../.yarn/berry/cache/axios-npm-1.8.1-8a5eaf948f-10c0.zip/node_modules/axios/",\
+      ["npm:1.8.2", {\
+        "packageLocation": "../../.yarn/berry/cache/axios-npm-1.8.2-55671cda10-10c0.zip/node_modules/axios/",\
         "packageDependencies": [\
-          ["axios", "npm:1.8.1"],\
-          ["follow-redirects", "virtual:8a5eaf948f972827ad382e1634a66db7251ca4c1e17c5e72e815f2ff4664941f3261c1156c1523b91e5319cef69577e1e3b0b67fbc3f006ce5929c315eede323#npm:1.15.9"],\
+          ["axios", "npm:1.8.2"],\
+          ["follow-redirects", "virtual:55671cda109d40748b7e5f5c4800486b4658ca82dacc9dd48dc401a3e431c6709551633a86acb3d432e80057bc06d36cdbc4aaa7b783386d2c6f6604618b5c22#npm:1.15.9"],\
           ["form-data", "npm:4.0.2"],\
           ["proxy-from-env", "npm:1.1.0"]\
         ],\
@@ -412,6 +413,15 @@ const RAW_RUNTIME_STATE =
           ["crc32-stream", "npm:4.0.3"],\
           ["crc-32", "npm:1.2.2"],\
           ["readable-stream", "npm:3.6.2"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
+    ["csv-parse", [\
+      ["npm:5.6.0", {\
+        "packageLocation": "../../.yarn/berry/cache/csv-parse-npm-5.6.0-ac425c1790-10c0.zip/node_modules/csv-parse/",\
+        "packageDependencies": [\
+          ["csv-parse", "npm:5.6.0"]\
         ],\
         "linkType": "HARD"\
       }]\
@@ -716,10 +726,10 @@ const RAW_RUNTIME_STATE =
         ],\
         "linkType": "SOFT"\
       }],\
-      ["virtual:8a5eaf948f972827ad382e1634a66db7251ca4c1e17c5e72e815f2ff4664941f3261c1156c1523b91e5319cef69577e1e3b0b67fbc3f006ce5929c315eede323#npm:1.15.9", {\
-        "packageLocation": "./.yarn/__virtual__/follow-redirects-virtual-f0a7f34c07/3/.yarn/berry/cache/follow-redirects-npm-1.15.9-539785d34c-10c0.zip/node_modules/follow-redirects/",\
+      ["virtual:55671cda109d40748b7e5f5c4800486b4658ca82dacc9dd48dc401a3e431c6709551633a86acb3d432e80057bc06d36cdbc4aaa7b783386d2c6f6604618b5c22#npm:1.15.9", {\
+        "packageLocation": "./.yarn/__virtual__/follow-redirects-virtual-164d26556d/3/.yarn/berry/cache/follow-redirects-npm-1.15.9-539785d34c-10c0.zip/node_modules/follow-redirects/",\
         "packageDependencies": [\
-          ["follow-redirects", "virtual:8a5eaf948f972827ad382e1634a66db7251ca4c1e17c5e72e815f2ff4664941f3261c1156c1523b91e5319cef69577e1e3b0b67fbc3f006ce5929c315eede323#npm:1.15.9"],\
+          ["follow-redirects", "virtual:55671cda109d40748b7e5f5c4800486b4658ca82dacc9dd48dc401a3e431c6709551633a86acb3d432e80057bc06d36cdbc4aaa7b783386d2c6f6604618b5c22#npm:1.15.9"],\
           ["@types/debug", null],\
           ["debug", null]\
         ],\
@@ -902,7 +912,7 @@ const RAW_RUNTIME_STATE =
           ["extend", "npm:3.0.2"],\
           ["gaxios", "npm:6.7.1"],\
           ["google-auth-library", "npm:9.15.1"],\
-          ["qs", "npm:6.14.0"],\
+          ["qs", "npm:6.13.0"],\
           ["url-template", "npm:2.0.8"],\
           ["uuid", "npm:9.0.1"]\
         ],\
@@ -1308,7 +1318,8 @@ const RAW_RUNTIME_STATE =
           ["narrartive-backend", "workspace:."],\
           ["7zip-bin", "npm:5.2.0"],\
           ["archiver", "npm:5.3.2"],\
-          ["axios", "npm:1.8.1"],\
+          ["axios", "npm:1.8.2"],\
+          ["csv-parse", "npm:5.6.0"],\
           ["csv-parser", "npm:3.2.0"],\
           ["dotenv", "npm:16.4.7"],\
           ["express", "npm:4.21.2"],\
@@ -1509,14 +1520,6 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "../../.yarn/berry/cache/qs-npm-6.13.0-53676ddc84-10c0.zip/node_modules/qs/",\
         "packageDependencies": [\
           ["qs", "npm:6.13.0"],\
-          ["side-channel", "npm:1.1.0"]\
-        ],\
-        "linkType": "HARD"\
-      }],\
-      ["npm:6.14.0", {\
-        "packageLocation": "../../.yarn/berry/cache/qs-npm-6.14.0-6b298311eb-10c0.zip/node_modules/qs/",\
-        "packageDependencies": [\
-          ["qs", "npm:6.14.0"],\
           ["side-channel", "npm:1.1.0"]\
         ],\
         "linkType": "HARD"\

@@ -1,20 +1,14 @@
-import transporter from './emailClient.js';
-import { loadFailedOrdersTracker, saveFailedOrdersTracker } from './tracker.js';
+import transporter, { sendEmail } from "./emailHandler.js";
+import { loadFailedOrdersTracker, saveFailedOrdersTracker } from "./tracker.js";
+import fs from "fs";
 
-const failedOrdersToday = new Set();   // New tracker
+const failedOrdersToday = new Set(); // In-memory tracker for duplicate prevention
 
-function isSameDay(timestamp) {
-    const now = new Date();
-    const date = new Date(timestamp);
-    return now.toDateString() === date.toDateString();
-}
-
-const dailyErrors = [];
-
+// ✅ Logs a failed order once per day
 export async function logDailyError(orderNumber, errorMessage) {
     const failedOrders = await loadFailedOrdersTracker();
 
-    // If order was already logged today, skip to prevent duplicate alerts
+    // Prevent duplicate logging
     if (failedOrders[orderNumber]) return;
 
     failedOrders[orderNumber] = errorMessage;
@@ -23,93 +17,77 @@ export async function logDailyError(orderNumber, errorMessage) {
     console.log(`🚨 Logged failed order ${orderNumber} for daily summary.`);
 }
 
-// Send a daily summary email with all logged errors (called at midnight)
-async function sendDailySummaryEmail() {
-    const failedOrdersTracker = await loadFailedOrdersTracker();
+// ✅ Send a daily summary email
+export async function sendDailySummary() {
+    console.log("📧 Preparing daily summary...");
 
-    if (Object.keys(failedOrdersTracker).length === 0) {
-        console.log("📧 No failed orders to report in the daily summary.");
-    
-        // But if there was a reset earlier, notify admin in the summary
-        if (fs.existsSync('./failed_orders.json')) {
-            let emailBody = `<h2>⚠️ Failed Orders Tracker was Reset</h2>`;
-            emailBody += `<p>The failed orders tracker was corrupted and automatically reset. Some failure records may be missing.</p>`;
-    
-            await sendAdminAlert("⚠️ Daily Summary: Failed Orders Tracker Reset", emailBody);
-        }
-        return;
-    }
-        
-    let emailBody = `<h2>📊 Daily Order Processing Summary</h2>`;
-    emailBody += `<p>Here is the status of orders processed today:</p>`;
+    const failedOrders = await loadFailedOrdersTracker();
 
-    let hasErrors = false;
-
-    for (const [fileName, failedOrders] of Object.entries(failedOrdersTracker)) {
-        if (failedOrders.length > 0) {
-            hasErrors = true;
-            emailBody += `<h3>⚠️ Issues Found in <strong>${fileName}</strong></h3>`;
-            emailBody += `<ul>${failedOrders.map(order => `<li>❌ Order #${order} failed</li>`).join('')}</ul>`;
-            emailBody += `<p>📌 This file remains in the orders folder for manual review.</p>`;
-        }
-    }
-
-    if (!hasErrors) {
-        console.log("✅ No failed orders today. Skipping admin summary email.");
+    if (!failedOrders || Object.keys(failedOrders).length === 0) {
+        console.log("✅ No issues to report in daily summary.");
         return;
     }
 
-    // Send the summary email to the admin
-    await sendAdminAlert(
-        "🚨 Daily Summary: Orders with Issues",
-        emailBody
-    );
+    let emailBody = `<h2>🚨 Daily Failed Order Summary</h2>`;
+    emailBody += `<p>The following orders encountered issues today:</p><ul>`;
 
-    console.log("📧 Daily summary email sent to admin.");
+    for (const [orderNumber, reason] of Object.entries(failedOrders)) {
+        emailBody += `<li>❌ Order #${orderNumber}: ${reason}</li>`;
+    }
+
+    emailBody += `</ul><p>📌 Please review the orders in Google Drive.</p>`;
+
+    try {
+        await sendEmail({
+            to: process.env.ADMIN_EMAIL,
+            subject: "🚨 Daily Summary: Orders with Issues",
+            html: emailBody,
+        });
+
+        console.log("✅ Daily summary sent");
+    } catch (err) {
+        console.error("❌ Failed to send daily summary:", err.message);
+    }
 }
 
+// ✅ Resets daily failed orders (runs at midnight)
 export function resetDailyFailures() {
-    failedOrdersToday.clear();  // Clear at midnight to allow fresh alerts
+    failedOrdersToday.clear();
+    console.log("🔄 Daily tracker reset completed");
 }
 
+// ✅ Send immediate error notification for failed orders
 export async function sendErrorNotification(orderNumber, message) {
-    const recipient = process.env.NOTIFY_EMAIL_RECIPIENT;
-
-    if (!recipient) {
-        console.error('❌ Notification failed: NO NOTIFY_EMAIL_RECIPIENT configured.');
+    if (!process.env.ADMIN_EMAIL) {
+        console.error("❌ Notification failed: NO_ADMIN_EMAIL_CONFIGURED");
         return;
     }
 
-    const cacheKey = `${orderNumber}-${new Date().toISOString().split('T')[0]}`;
-    
+    const cacheKey = `${orderNumber}-${new Date().toISOString().split("T")[0]}`;
     if (failedOrdersToday.has(cacheKey)) {
-        console.log(`⏸️ Skipping duplicate error notification for Order ${orderNumber} (already notified today)`);
+        console.log(`ℹ️ Order ${orderNumber}: Notification skipped (already sent today)`);
         return;
     }
 
     failedOrdersToday.add(cacheKey);
 
     const subject = `⚠️ Order Processing Failed: Order ${orderNumber}`;
-
     const html = `
         <h3>Order Processing Failed</h3>
         <p><strong>Order Number:</strong> ${orderNumber}</p>
-        <p><strong>Details:</strong><br>${message.replaceAll('\n', '<br>')}</p>
-        <p>Please check Render logs or Google Drive for further investigation.</p>
+        <p><strong>Details:</strong><br>${message.replaceAll("\n", "<br>")}</p>
+        <p>Please check logs or Google Drive for further investigation.</p>
     `;
 
     try {
-        await transporter.sendEmail({
-            from: 'noreply@narrartive.de',
-            to: recipient,
+        await sendEmail({
+            to: process.env.ADMIN_EMAIL,
             subject,
-            html
+            html,
         });
 
-        console.log(`📧 Error notification sent for Order ${orderNumber}`);
+        console.log(`✅ Alert sent for Order ${orderNumber}`);
     } catch (err) {
-        console.error(`❌ Failed to send error notification for Order ${orderNumber}:`, err.message);
+        console.error(`❌ Failed to send alert for Order ${orderNumber}:`, err.message);
     }
 }
-
-export { sendDailySummaryEmail };

@@ -5,3 +5,5 @@ processed_tracker.json
 temp_*/
 node_modules/
 *.log
+data/
+failed_orders.json

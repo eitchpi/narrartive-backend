@@ -1,395 +1,399 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
+import { loadTracker, saveTracker, processEtsyOrderFile, loadFailedOrdersTracker, saveFailedOrdersTracker } from "./tracker.js";
+import { 
+    downloadAllFilesInFolder, 
+    findProductFolder, 
+    findSizeFolder, 
+    downloadFileFromDrive, 
+    uploadFileToDrive, 
+    getThankYouCardId,
+    getSubfolderId,
+    listFilesInFolder,
+    moveFileToFolder
+} from "./driveUtils.js";
+import { sendEmail } from "./emailHandler.js";
+import { sendDailySummary } from "./notifier.js";
+import dotenv from "dotenv";
+import { fileURLToPath } from 'url';
+import { ensureTempOrderFolder, createZipFile, deleteTempFolder, readJsonFromFile, writeJsonToFile } from "./fileUtils.js";
 import { google } from 'googleapis';
-import dotenv from 'dotenv';
-import { parse } from 'csv-parse';
-import { createZip, uploadFile, sendEmail, deleteLocalFiles } from './fileHandler.js';
-import { generatePassword, sendAdminAlert } from './utils.js';
-import { recordError } from './errorTracker.js';
-import { loadTracker, saveTracker } from './tracker.js';
-import { moveFileToProcessed } from './fileHandler.js';
-import { loadFailedOrdersTracker, saveFailedOrdersTracker } from './tracker.js';
-import { logDailyError } from './notifier.js';
+import { parse } from 'csv-parse/sync';
 
 dotenv.config();
 
-function sanitizeProductName(rawName) {
-    return rawName.split(' - ')[0].trim();
-}
-
-function extractProductName(rawName) {
-    // Remove anything after the first " - " (hyphen with spaces)
-    const dashIndex = rawName.indexOf(' - ');
-    return dashIndex !== -1 ? rawName.substring(0, dashIndex).trim() : rawName.trim();
-}
-
-function extractVariationValue(rawSize) {
-    if (!rawSize) return '';  // Handle empty values gracefully
-    const parts = rawSize.split(':');
-    return parts.length > 1 ? parts[1].trim() : rawSize.trim();  // Works for both "Size: A4" and just "A4"
-}
-
-const credentials = {
-    client_email: process.env.GOOGLE_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\n/g, '\n'),
-    project_id: process.env.GOOGLE_PROJECT_ID,
-};
+// ✅ Define __dirname for ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const auth = new google.auth.JWT({
-    email: credentials.client_email,
-    key: credentials.private_key,
+    email: process.env.GOOGLE_CLIENT_EMAIL,
+    key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
     scopes: ['https://www.googleapis.com/auth/drive'],
 });
 
 const drive = google.drive({ version: 'v3', auth });
 
-async function loadLatestEtsyOrder() {
-    const folderId = process.env.ETSY_ORDERS_FOLDER_ID;
-    const res = await drive.files.list({
-        q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder'`,
-        fields: 'files(id, name, mimeType)',
-        orderBy: 'createdTime desc',
-        pageSize: 1
-    });
+const COMPLETED_ORDERS_FOLDER_ID = process.env.COMPLETED_ORDERS_FOLDER_ID;
+const ROOT_COLLECTION_ID = process.env.NARRARTIVE_FOLDER_ID;
+const THANK_YOU_FOLDER_ID = process.env.THANK_YOU_FOLDER_ID;
 
-    if (res.data.files.length === 0) {
-        console.log('📭 No new Etsy orders found — checking again in 5 minutes...');
-        return null;
+// Function to track skipped files in failed orders tracker
+async function trackSkippedFile(fileName, orderNumber) {
+    console.log(`🔄 Starting to track skipped file: ${fileName}`);
+    const failedOrders = await loadFailedOrdersTracker();
+    
+    if (!failedOrders.skippedFiles) {
+        failedOrders.skippedFiles = {};
     }
-
-    const file = res.data.files[0];
-    const orders = [];
-
-    const fileStream = file.mimeType === 'application/vnd.google-apps.spreadsheet'
-        ? await drive.files.export({ fileId: file.id, mimeType: 'text/csv' }, { responseType: 'stream' })
-        : await drive.files.get({ fileId: file.id, alt: 'media' }, { responseType: 'stream' });
-
-    await parseCSV(fileStream.data, orders);
-    return { fileId: file.id, fileName: file.name, orders };
-}
-
-
-async function parseCSV(stream) {
-    return new Promise((resolve, reject) => {
-        const results = [];
-        stream.pipe(parse({ columns: true }))
-            .on('data', (data) => results.push(data))
-            .on('end', () => resolve(results))
-            .on('error', reject);
-    });
-}
-
-async function loadProductList() {
-    const folderId = process.env.DOCUMENTS_FOLDER_ID;
-    const res = await drive.files.list({
-        q: `name contains 'Product_List' and '${folderId}' in parents`,
-        fields: 'files(id)',
-        orderBy: 'createdTime desc',
-        pageSize: 1
-    });
-
-    if (res.data.files.length === 0) {
-        throw new Error('❌ No Product_List file found in Documents folder');
-    }
-
-    const fileStream = await drive.files.export({
-        fileId: res.data.files[0].id,
-        mimeType: 'text/csv'
-    }, { responseType: 'stream' });
-
-    return await parseCSV(fileStream.data);  // ✅ Replace parseCsvStream() with parseCSV()
-}
-
-async function processAllOrders() {
-    console.log("🔄 Starting order processing...");
-
-    const tracker = await loadTracker();
-    let failedOrders = await loadFailedOrdersTracker();
-
-    // Ensure failed_orders.json exists
-    if (!failedOrders) {
-        console.warn("⚠️ Failed Orders Tracker is missing — creating a new one.");
-        failedOrders = {};
-        await saveFailedOrdersTracker(failedOrders);
-    }
-
-    const folderId = process.env.ETSY_ORDERS_FOLDER_ID;
-    const res = await drive.files.list({
-        q: `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder'`,
-        fields: 'files(id, name)',
-    });
-
-    const files = res.data.files || [];
-
-    if (files.length === 0) {
-        console.log("📭 No new Etsy order file found.");
+    
+    // Early return if file is already tracked
+    if (failedOrders.skippedFiles[fileName]) {
+        console.log(`ℹ️ File ${fileName} is already tracked - no notification needed`);
         return;
     }
 
-    for (const file of files) {
-        const fileId = file.id;
-        const fileName = file.name;
+    const now = new Date();
+    
+    // Add new file to tracker
+    console.log(`📝 Adding ${fileName} to failed orders tracker...`);
+    failedOrders.skippedFiles[fileName] = {
+        orderNumber,
+        dateSkipped: now.toISOString(),
+        lastNotified: now.toISOString(), // Set initial notification time
+        reason: 'Already processed, needs _fix suffix'
+    };
 
-        console.log(`🔍 Processing file: ${fileName}`);
+    // Send immediate email alert
+    try {
+        console.log(`📧 Preparing to send alert email for ${fileName}...`);
+        const emailContent = `
+            <h1>⚠️ Order File Requires Attention</h1>
+            <p>A file has been skipped and requires manual intervention:</p>
+            <ul>
+                <li><strong>File:</strong> ${fileName}</li>
+                <li><strong>Order Number:</strong> ${orderNumber}</li>
+                <li><strong>Time:</strong> ${now.toLocaleString()}</li>
+                <li><strong>Reason:</strong> File has already been processed</li>
+            </ul>
+            <p><strong>Required Action:</strong> Please process this file with the _fix suffix to handle any necessary corrections.</p>
+            <p>For example, rename the file to: ${fileName.replace('.csv', '_fix.csv')}</p>
+        `;
 
-        if (tracker[fileName]) {
-            console.log(`⏭️ Skipping already processed file: ${fileName}`);
-            continue;
+        await sendEmail({
+            to: process.env.ADMIN_EMAIL,
+            subject: `🚨 Immediate Alert: Order File ${fileName} Needs Attention`,
+            html: emailContent
+        });
+        
+        // Save to tracker after successful email
+        await saveFailedOrdersTracker(failedOrders);
+        console.log(`✅ Alert email sent to Admin`);
+    } catch (error) {
+        console.error(`❌ Error sending alert email: ${error.message}`);
+        throw error;
+    }
+}
+
+// Function to list all order files in the Etsy Orders folder
+async function listOrderFiles() {
+    const folderId = process.env.ETSY_ORDERS_FOLDER_ID;
+    if (!folderId) {
+        throw new Error("❌ ETSY_ORDERS_FOLDER_ID is not defined");
+    }
+
+    const response = await drive.files.list({
+        q: `'${folderId}' in parents and trashed=false and mimeType='text/csv'`,
+        fields: 'files(id, name)',
+    });
+
+    return response.data.files;
+}
+
+// Function to download and parse CSV file
+async function processFile(fileId, fileName) {
+    const tempFolder = ensureTempOrderFolder('csv_temp');
+    const filePath = path.join(tempFolder, fileName);
+    
+    try {
+        await downloadFileFromDrive(fileId, filePath);
+        return filePath;
+    } catch (error) {
+        console.error(`❌ Error downloading CSV file: ${error.message}`);
+        throw error;
+    }
+}
+
+// Parse CSV content
+function parseCSV(filePath) {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return parse(content, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true
+    });
+}
+
+// Process new orders only
+async function processNewOrders() {
+    console.log("🚀 Processing new orders...");
+    
+    try {
+        // Simply call processAllOrders since it now handles consolidation
+        // and checks for already processed files
+        await processAllOrders();
+    } catch (error) {
+        console.error(`❌ Error processing new orders: ${error.message}`);
+        throw error;
+    }
+}
+
+// Helper function to generate zip password
+function generateZipPassword(orderNumber, email) {
+    // Get last 6 characters of email (excluding potential whitespace)
+    const emailSuffix = email.trim().slice(-6);
+    // Combine order number and email suffix
+    return `${orderNumber}${emailSuffix}`;
+}
+
+// Process all orders with complete workflow
+async function processAllOrders() {
+    console.log('🚀 Processing all orders...');
+
+    try {
+        const orderFiles = await listOrderFiles();
+
+        if (!orderFiles || orderFiles.length === 0) {
+            console.log('📭 No Etsy order files found.');
+            return;
         }
 
-        try {
-            const fileStream = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'stream' });
+        // Group orders by order number
+        const orderGroups = new Map();
 
-            const orders = await parseCSV(fileStream.data);
-            const processedOrders = [];
-            const failedOrdersInFile = [];
+        for (const { id: fileId, name: fileName } of orderFiles) {
+            console.log(`🔍 Processing file: ${fileName} (File ID: ${fileId})`);
 
-            for (const order of orders) {
-                const orderNumber = order['Order ID'];
-
-                if (tracker[orderNumber]) {
-                    console.log(`⏭️ Skipping already processed order: ${orderNumber}`);
+            try {
+                // Check if file has already been processed
+                const tracker = await loadTracker();
+                const baseFileName = fileName.replace(/_fix\d*\.csv$/, '.csv');
+                const isFixAttempt = fileName.includes('_fix');
+                
+                if (!isFixAttempt && tracker.processedOrders[baseFileName]) {
+                    console.log(`⚠️ File ${baseFileName} has already been processed. Use _fix suffix to reprocess.`);
+                    await trackSkippedFile(fileName, baseFileName);
+                    // Remove immediate summary trigger since it's handled by daily reset
                     continue;
                 }
 
-                try {
-                    await processSingleOrder(orderNumber, order);
-                    processedOrders.push(orderNumber);
-                } catch (error) {
-                    console.error(`❌ Failed to process order ${orderNumber}: ${error.message}`);
-                    failedOrdersInFile.push(orderNumber);
-                    failedOrders[orderNumber] = error.message;
-                    await logDailyError(orderNumber, error.message);
+                // Download and parse file
+                const localFilePath = await processFile(fileId, fileName);
+                const parsedOrders = parseCSV(localFilePath);
+
+                if (!parsedOrders || parsedOrders.length === 0) {
+                    console.error(`❌ No valid orders found in ${fileName}`);
+                    continue;
                 }
-            }
 
-            if (failedOrdersInFile.length === 0) {
-                console.log(`✅ All orders processed successfully, moving file: ${fileName}`);
-                await moveFileToProcessed(fileId);
-            } else {
-                console.log(`⚠️ Some orders failed in ${fileName}, keeping file for review.`);
-            }
+                // Group orders by order number
+                for (const order of parsedOrders) {
+                    const orderNumber = order["Order Number"];
+                    if (!orderGroups.has(orderNumber)) {
+                        orderGroups.set(orderNumber, {
+                            orders: [],
+                            files: new Set(),
+                            buyerEmail: order["Buyer Email"],
+                            buyerName: order["Buyer Name"]
+                        });
+                    }
+                    orderGroups.get(orderNumber).orders.push(order);
+                    orderGroups.get(orderNumber).files.add(fileName);
+                }
 
-            tracker[fileName] = true;
-            await saveTracker(tracker);
-            await saveFailedOrdersTracker(failedOrders);
-        } catch (error) {
-            console.error(`❌ Error processing file ${fileName}: ${error.message}`);
-            failedOrders[fileName] = `File processing error: ${error.message}`;
-            await saveFailedOrdersTracker(failedOrders);
-            await logDailyError(fileName, `File processing error: ${error.message}`);
-        }
-    }
-
-    console.log("✅ Order processing completed.");
-}
-
-async function getProductFolderId(productName) {
-    const narrARTiveFolderId = process.env.NARRARTIVE_FOLDER_ID;
-    
-    // Get a list of all top-level folders in Google Drive
-    const parentFolders = await listSubfolders(narrARTiveFolderId);
-    
-    for (const parentFolder of parentFolders) {
-        console.log(`🔍 Searching in: ${parentFolder.name}`);
-
-        // Look inside each folder to find the product
-        const productFolderId = await getSubfolderId(parentFolder.id, productName);
-        if (productFolderId) {
-            return productFolderId;
-        }
-    }
-
-    console.error(`❌ Product folder not found: "${productName}"`);
-    return null; // Return null if the product folder is not found
-}
-
-async function processSingleOrder(orderNumber, orderItems) {
-    console.log(`🔄 Processing order: ${orderNumber}`);
-
-    // Check if order was already processed
-    const processedTracker = loadTracker();
-    if (processedTracker[orderNumber]) {
-        console.log(`⏭️ Skipping already processed order: ${orderNumber}`);
-        return;  // Skip duplicate order
-    }
-
-    const tempFolder = `./temp_${orderNumber}`;
-    if (fs.existsSync(tempFolder)) {
-        fs.rmSync(tempFolder, { recursive: true, force: true });
-    }
-    fs.mkdirSync(tempFolder, { recursive: true });
-
-    try {
-        // Extract product name from order CSV (removing extra SEO text)
-        const rawProductName = orderItems[0]['Product Name'].trim();
-        const productName = extractProductName(rawProductName);
-
-        console.log(`🔍 Looking for product folder: "${productName}"`);
-
-        // Search product folder inside 'Bonus Collection' and 'Digital Art'
-        const parentFolders = [process.env.BONUS_COLLECTION_FOLDER_ID, process.env.DIGITAL_ART_FOLDER_ID];
-        let productFolderId = null;
-
-        for (const parent of parentFolders) {
-            console.log(`🔍 Searching in: ${parent}`);
-            productFolderId = await getSubfolderId(parent, productName);
-            if (productFolderId) break; // Stop searching if found
-        }
-
-        if (!productFolderId) {
-            console.error(`❌ Product folder not found: "${productName}"`);
-            await logDailyError(orderNumber, `Product folder missing: "${productName}"`);
-            return;  // Skip this order
-        }
-
-        console.log(`📂 Found product folder for "${productName}"`);
-
-        // Find the format folder (either A2 or 40x40)
-        const validFormats = ['A2', '40x40'];
-        let formatFolderId = null;
-
-        for (const format of validFormats) {
-            formatFolderId = await getSubfolderId(productFolderId, format);
-            if (formatFolderId) {
-                console.log(`📂 Found format folder for "${productName}": ${format}`);
-                break;
+            } catch (err) {
+                console.error(`❌ Error processing file ${fileName}: ${err.message}`);
             }
         }
 
-        if (!formatFolderId) {
-            console.error(`❌ Format folder (A2 or 40x40) not found for: ${productName}`);
-            await logDailyError(orderNumber, `Format folder missing: "${productName}" (A2 or 40x40 required)`);
-            return;
+        // Process each group of orders
+        for (const [orderNumber, orderGroup] of orderGroups.entries()) {
+            console.log(`🛠️ Processing consolidated order: ${orderNumber}`);
+            const tempOrderFolder = await ensureTempOrderFolder(orderNumber);
+            const csvTempFolder = ensureTempOrderFolder('csv_temp');
+            
+            try {
+                let allProductsSucceeded = true;
+
+                // Process each product in the order
+                for (const order of orderGroup.orders) {
+                    try {
+                        const success = await processOrderProduct(order, tempOrderFolder);
+                        if (!success) {
+                            allProductsSucceeded = false;
+                        }
+                    } catch (err) {
+                        console.error(`❌ Processing failed for product in order ${orderNumber}: ${err.message}`);
+                        allProductsSucceeded = false;
+                    }
+                }
+
+                if (allProductsSucceeded) {
+                    // Create zip file with password protection
+                    const zipPath = path.join(tempOrderFolder, `Order_${orderNumber}.zip`);
+                    const zipPassword = generateZipPassword(orderNumber, orderGroup.buyerEmail);
+                    await createZipFile(tempOrderFolder, zipPath, zipPassword, ['Order_*.zip', '.DS_Store']);
+
+                    // Upload zip to Google Drive first
+                    const zipFileId = await uploadFileToDrive(zipPath, process.env.COMPLETED_ORDERS_FOLDER_ID);
+                    if (!zipFileId) {
+                        throw new Error('❌ Failed to upload ZIP file to Drive');
+                    }
+
+                    // Send email with download link
+                    const emailTemplate = `
+                        <h1>Thank you for your purchase!</h1>
+                        <p>Dear ${orderGroup.buyerName},</p>
+                        <p>Thank you for purchasing from narrARTive. Your files are ready for download:</p>
+                        
+                        <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin: 20px 0;">
+                            <h2>📥 Download Your Files</h2>
+                            <p><a href="https://drive.google.com/file/d/${zipFileId}/view?usp=sharing" style="display: inline-block; background-color: #4285f4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin: 10px 0;">Download ZIP File</a></p>
+                            
+                            <p style="margin-top: 15px;"><strong>Password:</strong> ${zipPassword}</p>
+                            
+                            <p style="color: #e65100; margin-top: 15px;">
+                                ⚠️ Important: This download link will expire in 24 hours
+                            </p>
+                        </div>
+
+                        <p>Best regards,<br>narrARTive Team</p>
+
+                        <hr style="margin-top: 30px; border: none; border-top: 1px solid #eee;">
+                        <p style="font-size: 12px; color: #666; margin-top: 20px;">
+                            Having trouble or questions? Contact us at: info@narrartive.de
+                        </p>
+                    `;
+
+                    await sendEmail({
+                        to: orderGroup.buyerEmail,
+                        subject: `Your narrARTive Purchase: Order #${orderNumber}`,
+                        html: emailTemplate
+                    });
+
+                    // Update tracker for all files in this order
+                    const tracker = await loadTracker();
+                    for (const fileName of orderGroup.files) {
+                        // For fix files, we need to track all orders in the file
+                        const baseFileName = fileName.replace(/_fix\d*\.csv$/, '.csv');
+                        const isFixAttempt = fileName.includes('_fix');
+                        
+                        if (isFixAttempt) {
+                            // For fix files, get all orders from the original file
+                            const originalOrders = tracker.processedOrders[baseFileName] || [];
+                            tracker.processedOrders[fileName] = [...new Set([...originalOrders, orderNumber])];
+                        } else {
+                            // For regular files, just track this order
+                            tracker.processedOrders[fileName] = tracker.processedOrders[fileName] || [];
+                            if (!tracker.processedOrders[fileName].includes(orderNumber)) {
+                                tracker.processedOrders[fileName].push(orderNumber);
+                            }
+                        }
+                    }
+                    await saveTracker(tracker);
+
+                    // Move processed files
+                    for (const fileName of orderGroup.files) {
+                        const file = orderFiles.find(f => f.name === fileName);
+                        if (file) {
+                            await moveFileToFolder(
+                                file.id,
+                                process.env.PROCESSED_ORDERS_FOLDER_ID,
+                                process.env.ETSY_ORDERS_FOLDER_ID
+                            );
+                        }
+                    }
+                    console.log(`✅ Processed consolidated order ${orderNumber}`);
+                }
+
+            } catch (err) {
+                console.error(`❌ Error processing consolidated order ${orderNumber}: ${err.message}`);
+            } finally {
+                // Cleanup all temp folders
+                deleteTempFolder(tempOrderFolder);
+                deleteTempFolder(csvTempFolder);
+                deleteTempFolder(path.join(__dirname, 'temp_orders'));
+            }
         }
 
-        // Download all files from the selected format folder
-        console.log(`📂 Downloading files from folder: ${formatFolderId}`);
-        await downloadAllFilesInFolder(formatFolderId, tempFolder);
-
-        // Download Thank You Card
-        const thankYouFolderId = await getSubfolderId(process.env.THANK_YOU_FOLDER_ID, 'Thank You Card');
-        await downloadAllFilesInFolder(thankYouFolderId, tempFolder);
-
-        // Check if files exist before proceeding
-        if (fs.readdirSync(tempFolder).length === 0) {
-            console.error(`❌ No files downloaded for order ${orderNumber}`);
-            await logDailyError(orderNumber, `No files downloaded for order`);
-            return;
-        }
-
-        // Create ZIP file with password protection
-        const zipPath = `./Order_${orderNumber}.zip`;
-        const filesToZip = fs.readdirSync(tempFolder).map(f => path.join(tempFolder, f));
-        const password = generatePassword(orderItems[0]);
-        await createZip(zipPath, filesToZip, password);
-
-        // Upload ZIP file to Google Drive
-        const uploadedFileId = await uploadFile(zipPath);
-        const downloadLink = `https://drive.google.com/file/d/${uploadedFileId}/view?usp=sharing`;
-
-        // Send email to the customer
-        await sendEmail(
-            orderItems[0]['Buyer Email'],
-            'Your Artwork is Ready! 🎨',
-            downloadLink,
-            password,
-            orderItems[0]['Buyer Name']
-        );
-
-        console.log(`✅ Order ${orderNumber} processed successfully.`);
-
-        // Mark order as processed
-        processedTracker[orderNumber] = { processedAt: new Date().toISOString() };
-        saveTracker(processedTracker);
-
-        // Clean up local files
-        deleteLocalFiles([...filesToZip, zipPath]);
-        fs.rmSync(tempFolder, { recursive: true, force: true });
-
+        console.log('✅ Order processing completed.');
     } catch (error) {
-        console.error(`❌ Processing failed for order ${orderNumber}:`, error);
-        await logDailyError(orderNumber, `Unexpected error: ${error.message}`);
+        console.error('❌ Critical error in order processing:', error.message);
     }
 }
 
-async function findFormatFolder(productFolderId) {
-    const subfolders = await listSubfolders(productFolderId);
-    const folderNames = subfolders.map(f => f.name); // Extract folder names
-
-    if (folderNames.includes('A2')) {
-        return await getSubfolderId(productFolderId, 'A2');
-    } else if (folderNames.includes('40x40')) {
-        return await getSubfolderId(productFolderId, '40x40');
+// Function to sanitize product name to match folder structure
+function extractCoreProductName(fullName) {
+    if (fullName && typeof fullName === 'string') {
+        const dashIndex = fullName.indexOf(' - ');
+        if (dashIndex !== -1) {
+            return fullName.slice(0, dashIndex); // Return name before the first hyphen
+        } else {
+            return fullName; // Return full name if no hyphen exists
+        }
+    } else {
+        throw new Error(`Invalid product name: ${fullName}`);
     }
-
-    console.error(`❌ Format folder (A2 or 40x40) not found for: ${productFolderId}`);
-    return null;  // Neither found
 }
 
-async function listSubfolders(parentFolderId) {
-    const res = await drive.files.list({
-        q: `'${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
-        fields: 'files(id, name)'
-    });
+// Process a single product within an order
+async function processOrderProduct(orderData, tempOrderFolder) {
+    try {
+        let productName = extractCoreProductName(orderData['Product Name']);
 
-    return res.data.files || [];
-}
+        // Find product folder and size folder
+        const productFolderId = await findProductFolder(productName);
+        if (!productFolderId) {
+            throw new Error(`❌ Product folder not found for "${productName}"`);
+        }
 
+        const sizeFolderId = await findSizeFolder(productFolderId);
+        if (!sizeFolderId) {
+            throw new Error(`❌ Size folder not found inside ${productName}`);
+        }
 
-async function getSubfolderId(parentFolderId, targetName) {
-    const res = await drive.files.list({
-        q: `'${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
-        fields: 'files(id, name)'
-    });
+        // Download product files
+        const downloadedFiles = await downloadAllFilesInFolder(sizeFolderId, tempOrderFolder);
+        if (downloadedFiles.length === 0) {
+            throw new Error(`❌ No files downloaded for product: ${productName}`);
+        }
 
-    const folders = res.data.files || [];
-    
-    // Case-insensitive comparison
-    const matchingFolder = folders.find(folder => 
-        folder.name.trim().toLowerCase() === targetName.trim().toLowerCase()
-    );
+        // Download thank you card (only if not already in the folder)
+        const thankYouPath = path.join(tempOrderFolder, 'Thank_You_Card.png');
+        if (!fs.existsSync(thankYouPath)) {
+            const thankYouCardId = await getThankYouCardId();
+            await downloadFileFromDrive(thankYouCardId, thankYouPath);
+        }
 
-    return matchingFolder ? matchingFolder.id : null;
-}
-
-
-async function downloadAllFilesInFolder(folderId, destFolder) {
-    console.log(`📂 Downloading files from folder: ${folderId}`);
-
-    const res = await drive.files.list({
-        q: `'${folderId}' in parents`,
-        fields: 'files(id, name)'
-    });
-
-    const downloadedFiles = [];
-
-    for (const file of res.data.files) {
-        console.log(`⬇️ Found file in folder: ${file.name}`);
-
-        const filePath = path.join(destFolder, file.name);
-        const dest = fs.createWriteStream(filePath);
-        const fileStream = await drive.files.get({
-            fileId: file.id,
-            alt: 'media'
-        }, { responseType: 'stream' });
-
-        await new Promise((resolve, reject) => {
-            fileStream.data.pipe(dest)
-                .on('finish', () => {
-                    console.log(`✅ Saved file: ${filePath}`);
-                    downloadedFiles.push(filePath);
-                    resolve();
-                })
-                .on('error', (err) => {
-                    console.error(`❌ Failed to save file: ${filePath}`, err);
-                    sendAdminAlert(`🚨 File Download Failed`, `Failed to save file: ${filePath}\\nError: ${err.message}`);
-                    reject(err);
-                });
-        });
+        return true;
+    } catch (error) {
+        console.error(`❌ Error processing product: ${error.message}`);
+        return false;
     }
-
-    return downloadedFiles;
 }
 
-export { processAllOrders, parseCSV };
+function logError(orderData, errorMessage) {
+    const logFilePath = path.resolve(__dirname, 'errorLogs.txt');
+
+    const errorLog = `
+        Order Number: ${orderData['Order Number']}
+        Product Name: ${orderData['Product Name']}
+        Error Message: ${errorMessage}
+        Timestamp: ${new Date().toISOString()}
+    `;
+
+    fs.appendFileSync(logFilePath, errorLog, 'utf8');
+    console.log(`❌ Error logged for order ${orderData['Order Number']} in errorLogs.txt`);
+}
+
+export { processNewOrders, processAllOrders };
