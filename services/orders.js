@@ -371,11 +371,26 @@ async function processOrderProduct(orderData, tempOrderFolder) {
             throw new Error(`❌ No files downloaded for product: ${productName}`);
         }
 
-        // Download thank you card (only if not already in the folder)
-        const thankYouPath = path.join(tempOrderFolder, 'Thank_You_Card.png');
-        if (!fs.existsSync(thankYouPath)) {
+        // Download thank you card
+        try {
+            const thankYouPath = path.join(tempOrderFolder, 'Thank You.png');
+            
+            // Always remove existing thank you card if it exists
+            if (fs.existsSync(thankYouPath)) {
+                fs.unlinkSync(thankYouPath);
+                console.log('🗑️ Removed existing Thank You image');
+            }
+
             const thankYouCardId = await getThankYouCardId();
             await downloadFileFromDrive(thankYouCardId, thankYouPath);
+            console.log('✅ Downloaded new Thank You image');
+            
+            if (!fs.existsSync(thankYouPath)) {
+                throw new Error('Thank You image download failed - file not found');
+            }
+        } catch (error) {
+            console.error(`❌ Error handling Thank You Card: ${error.message}`);
+            throw error;
         }
 
         return true;

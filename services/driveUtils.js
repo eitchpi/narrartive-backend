@@ -89,7 +89,9 @@ export async function downloadFileFromDrive(fileId, destinationPath) {
 
         return new Promise((resolve, reject) => {
             dest.on('finish', () => {
-                console.log(`✅ Downloaded file: ${path.basename(destinationPath)}`);
+                // Use exact filename from the path without any modifications
+                const fileName = path.basename(destinationPath);
+                console.log(`✅ Downloaded file: ${fileName}`);
                 resolve();
             });
             dest.on('error', reject);
