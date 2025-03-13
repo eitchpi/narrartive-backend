@@ -79,11 +79,19 @@ export async function downloadFileFromDrive(fileId, destinationPath) {
             { responseType: 'stream' }
         );
 
+        // Remove existing file if it exists
+        if (fs.existsSync(destinationPath)) {
+            fs.unlinkSync(destinationPath);
+        }
+
         const dest = fs.createWriteStream(destinationPath);
         response.data.pipe(dest);
 
         return new Promise((resolve, reject) => {
-            dest.on('finish', resolve);
+            dest.on('finish', () => {
+                console.log(`✅ Downloaded file: ${path.basename(destinationPath)}`);
+                resolve();
+            });
             dest.on('error', reject);
         });
     } catch (error) {
@@ -143,15 +151,48 @@ export async function moveFileToFolder(fileId, newParentId, oldParentId) {
 
 export async function getThankYouCardId() {
     const thankYouFolderId = process.env.THANK_YOU_FOLDER_ID;
-    const response = await drive.files.list({
-        q: `'${thankYouFolderId}' in parents and mimeType contains 'image/' and trashed=false`,
-        fields: 'files(id, name)',
-    });
+    console.log(`🔍 Looking for Thank You image in folder: ${thankYouFolderId}`);
 
-    if (!response.data.files || response.data.files.length === 0) {
-        throw new Error('Thank you card not found');
+    try {
+        // First verify the folder exists
+        await drive.files.get({
+            fileId: thankYouFolderId,
+            fields: 'name'
+        });
+
+        // Search for Thank You image with strict criteria
+        const response = await drive.files.list({
+            q: `'${thankYouFolderId}' in parents and name = 'Thank You.png' and mimeType contains 'image/' and trashed = false`,
+            orderBy: 'modifiedTime desc',
+            fields: 'files(id, name, modifiedTime, trashed)',
+            pageSize: 1 // Get only the most recent one
+        });
+
+        if (!response.data.files || response.data.files.length === 0) {
+            throw new Error('No Thank You image found in the specified folder');
+        }
+
+        const thankYouCard = response.data.files[0];
+
+        // Double check the file still exists and isn't trashed
+        try {
+            const fileCheck = await drive.files.get({
+                fileId: thankYouCard.id,
+                fields: 'trashed'
+            });
+            
+            if (fileCheck.data.trashed) {
+                throw new Error('Most recent Thank You image is in trash');
+            }
+        } catch (error) {
+            throw new Error(`Failed to verify Thank You image: ${error.message}`);
+        }
+
+        console.log(`✅ Found Thank You image: ${thankYouCard.name}`);
+        return thankYouCard.id;
+    } catch (error) {
+        console.error(`❌ Error finding Thank You image: ${error.message}`);
+        throw error;
     }
-
-    return response.data.files[0].id;
 }
 
